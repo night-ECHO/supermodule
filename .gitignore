@@ -1,0 +1,23 @@
+# Java / Spring Boot
+target/
+*.class
+*.jar
+.mvn/
+.m2/
+mvnw
+mvnw.cmd
+
+# React / Frontend
+node_modules/
+dist/
+build/
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# App Data
+uploads/
+*.log
