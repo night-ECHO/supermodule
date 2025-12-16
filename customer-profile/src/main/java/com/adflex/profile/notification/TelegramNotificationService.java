@@ -1,10 +1,14 @@
 package com.adflex.profile.notification;
 
 import com.adflex.profile.integration.telegram.TelegramNotifier;
+import com.adflex.profile.notification.NotificationType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -12,20 +16,73 @@ import java.util.stream.Collectors;
 public class TelegramNotificationService implements NotificationService {
 
     private final TelegramNotifier telegramNotifier;
+    private final NotificationLogRepository logRepo;
+    private final ZaloZnsService zaloZnsService;
 
     @Override
     public void notify(NotificationEvent event) {
+        if (event == null || event.getType() == null) {
+            return;
+        }
+
+        // Telegram send + log
         String message = buildMessage(event);
-        if (message != null && !message.isBlank()) {
-            telegramNotifier.sendMessage(message);
+        NotificationLog logRow = NotificationLog.builder()
+                .leadId(toUUID(event.getLeadId()))
+                .channel(NotificationChannel.TELEGRAM)
+                .eventType(event.getType().name())
+                .recipient("TELEGRAM_CHAT") // thực tế chat-id trong properties
+                .contentPreview(message)
+                .status(NotificationStatus.PENDING)
+                .build();
+        logRow = logRepo.save(logRow);
+
+        try {
+            if (message != null && !message.isBlank()) {
+                telegramNotifier.sendMessage(message);
+            }
+            logRow.setStatus(NotificationStatus.SENT);
+            logRow.setSentAt(LocalDateTime.now());
+            logRepo.save(logRow);
+        } catch (Exception e) {
+            logRow.setStatus(NotificationStatus.FAILED);
+            logRow.setErrorMessage(e.getMessage());
+            logRepo.save(logRow);
+        }
+
+        // Zalo welcome only for LEAD_NEW
+        if (event.getType() == NotificationType.LEAD_NEW) {
+            Map<String, Object> zaloParams = Map.of(
+                    "customer_name", n(event.getName()),
+                    "phone", n(event.getPhone())
+            );
+            zaloZnsService.notifyZalo(toUUID(event.getLeadId()), event.getPhone(), "EVENT_WELCOME", zaloParams);
+        }
+    }
+
+    @Override
+    public void retry(NotificationLog log) {
+        if (log.getChannel() == NotificationChannel.TELEGRAM) {
+            NotificationEvent fakeEvent = NotificationEvent.builder()
+                    .type(NotificationType.valueOf(log.getEventType()))
+                    .leadId(log.getLeadId() == null ? null : log.getLeadId().toString())
+                    .phone(log.getRecipient())
+                    .name(log.getContentPreview())
+                    .build();
+
+            try {
+                telegramNotifier.sendMessage(log.getContentPreview());
+                log.setStatus(NotificationStatus.SENT);
+                log.setSentAt(LocalDateTime.now());
+            } catch (Exception e) {
+                log.setStatus(NotificationStatus.FAILED);
+                log.setErrorMessage(e.getMessage());
+            }
+            logRepo.save(log);
         }
     }
 
     private String buildMessage(NotificationEvent e) {
-        if (e == null || e.getType() == null) {
-            return null;
-        }
-
         return switch (e.getType()) {
             case LEAD_NEW -> formatLeadNew(e);
             case LEAD_DUPLICATE -> formatLeadDuplicate(e);
@@ -72,10 +129,7 @@ public class TelegramNotificationService implements NotificationService {
     }
 
     private String formatPaymentWaiting(NotificationEvent e) {
-        // 1. Lấy tên gói chính
         String pkg = e.getExtra() != null ? (String) e.getExtra().get("package") : "N/A";
-
-        // 2. Lấy danh sách Addon và format
         String fullPackageName = formatPackageWithAddons(pkg, e);
 
         return """
@@ -91,10 +145,7 @@ public class TelegramNotificationService implements NotificationService {
     }
 
     private String formatPaymentConfirmed(NotificationEvent e) {
-        // 1. Lấy tên gói chính
         String pkg = e.getExtra() != null ? (String) e.getExtra().get("package") : "N/A";
-
-        // 2. Lấy danh sách Addon và format
         String fullPackageName = formatPackageWithAddons(pkg, e);
 
         return """
@@ -109,9 +160,6 @@ public class TelegramNotificationService implements NotificationService {
         );
     }
 
-    // --- HÀM BỔ TRỢ ---
-
-    // Xử lý việc nối chuỗi gói + addons (Ví dụ: "GOI_2 + WEB + ZALO")
     private String formatPackageWithAddons(String mainPackage, NotificationEvent e) {
         if (e.getExtra() == null || !e.getExtra().containsKey("addons")) {
             return mainPackage;
@@ -119,7 +167,6 @@ public class TelegramNotificationService implements NotificationService {
 
         Object addonsObj = e.getExtra().get("addons");
         if (addonsObj instanceof List<?> list && !list.isEmpty()) {
-            // Nối danh sách addon thành chuỗi
             String addonStr = list.stream()
                     .map(Object::toString)
                     .collect(Collectors.joining(" + "));
@@ -131,5 +178,13 @@ public class TelegramNotificationService implements NotificationService {
 
     private String n(Object v) {
         return v == null ? "" : v.toString();
+    }
+
+    private UUID toUUID(String s) {
+        try {
+            return s == null ? null : UUID.fromString(s);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
