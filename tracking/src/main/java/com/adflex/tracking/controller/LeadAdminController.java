@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/admin/leads")
+@RequestMapping("/api/leads")
 @RequiredArgsConstructor
 public class LeadAdminController {
 

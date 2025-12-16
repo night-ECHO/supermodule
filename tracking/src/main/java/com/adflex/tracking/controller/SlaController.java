@@ -6,7 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/admin/sla")
+@RequestMapping("/api/sla")
 @RequiredArgsConstructor
 public class SlaController {
 

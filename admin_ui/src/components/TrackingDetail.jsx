@@ -9,10 +9,16 @@ import {
   UploadOutlined,
 } from '@ant-design/icons';
 import { confirmPayment, confirmPackage, fetchLeadDetail, fetchProgress, updateProgress, uploadProof } from '../api/leads';
+import { useCurrentUser } from '../hooks/useCurrentUser'; // Điều chỉnh đường dẫn nếu cần
+import { useAuth } from '../context/AuthContext';
 
 const TrackingDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const currentUser = useCurrentUser(); // Lấy user hiện tại: { username, role }
+  const isAdmin = currentUser?.role === 'ADMIN'; // Chỉ admin mới thấy nút xác nhận thanh toán
+  const { token } = useAuth();
+
   const [lead, setLead] = useState(null);
   const [progress, setProgress] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +30,7 @@ const TrackingDetail = () => {
   const [proofPreviewUrl, setProofPreviewUrl] = useState('');
   const [packageModalOpen, setPackageModalOpen] = useState(false);
   const [packageForm] = Form.useForm();
+
   const addonOptions = useMemo(
     () => [
       {
@@ -95,7 +102,7 @@ const TrackingDetail = () => {
     setSelectedStep(step);
     setNote(step.note || '');
     setProofDocId(step.proofDocId || '');
-    setProofPreviewUrl(step.fileLink || (step.proofDocId ? `/api/admin/proofs/${step.proofDocId}` : ''));
+    setProofPreviewUrl(step.fileLink || (step.proofDocId ? `/api/proofs/${step.proofDocId}` : ''));
     setProofFileName('');
     setModalVisible(true);
   };
@@ -209,8 +216,15 @@ const TrackingDetail = () => {
                 CHƯA THANH TOÁN
               </Tag>
             )}
-            {!paymentPaid && (
-              <Button size="small" type="primary" onClick={handleConfirmPayment} icon={<DollarOutlined />}>
+            {/* Chỉ hiển thị nút xác nhận thanh toán nếu chưa thanh toán và user là admin */}
+            {!paymentPaid && isAdmin && (
+              <Button
+                size="small"
+                type="primary"
+                onClick={handleConfirmPayment}
+                icon={<DollarOutlined />}
+                style={{ marginLeft: 12 }}
+              >
                 Xác nhận tiền về
               </Button>
             )}
@@ -309,91 +323,125 @@ const TrackingDetail = () => {
         </Col>
       </Row>
 
-      <Modal
-        title={`Xử lý bước: ${selectedStep?.milestoneName || selectedStep?.milestoneCode || ''}`}
-        open={modalVisible}
-        onCancel={() => setModalVisible(false)}
-        footer={[
-          <Button key="close" onClick={() => setModalVisible(false)}>
-            Đóng
-          </Button>,
-          <Button
-            key="submit"
-            type="primary"
-            onClick={handleCompleteStep}
-            disabled={selectedStep?.status === 'COMPLETED'}
-          >
-            Hoàn thành Bước
-          </Button>,
-        ]}
-      >
-        <p>
-          <b>Trạng thái hiện tại:</b> {selectedStep?.status}
-        </p>
+<Modal
+  title={`Xử lý bước: ${selectedStep?.milestoneName || selectedStep?.milestoneCode || ''}`}
+  open={modalVisible}
+  onCancel={() => setModalVisible(false)}
+  footer={[
+    <Button key="close" onClick={() => setModalVisible(false)}>
+      Đóng
+    </Button>,
+    <Button
+      key="submit"
+      type="primary"
+      onClick={handleCompleteStep}
+      disabled={selectedStep?.status === 'COMPLETED'}
+    >
+      Hoàn thành Bước
+    </Button>,
+  ]}
+>
+  <p>
+    <b>Trạng thái hiện tại:</b> {selectedStep?.status}
+  </p>
 
-        <Divider orientation="left">Ghi chú công việc</Divider>
-        <Input.TextArea
-          rows={4}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Nhập ghi chú"
+  <Divider orientation="left">Ghi chú công việc</Divider>
+  <Input.TextArea
+    rows={4}
+    value={note}
+    onChange={(e) => setNote(e.target.value)}
+    placeholder="Nhập ghi chú"
+  />
+
+  {selectedStep?.milestoneType !== 'ADDON' && (
+    <>
+      <Divider orientation="left">File bằng chứng</Divider>
+
+      {/* Upload + Preview + Download */}
+      <Space align="center">
+        {/* Nút upload */}
+        <Upload
+          customRequest={async ({ file, onSuccess, onError }) => {
+            try {
+              const res = await uploadProof(file);
+              setProofDocId(res.id);
+              setProofFileName(res.fileName || file.name || '');
+              setProofPreviewUrl(res.fileLink || `/api/proofs/${res.id}`);
+
+              onSuccess(res, file);
+              message.success(`Đã tải lên: ${file.name}`);
+            } catch (e) {
+              onError(e);
+              message.error('Upload proof thất bại');
+            }
+          }}
+          showUploadList={false}
+        >
+          <Button icon={<UploadOutlined />}>Tải file proof</Button>
+        </Upload>
+
+        {/* PREVIEW */}
+        <Button
+          type="link"
+          disabled={!proofPreviewUrl}
+          onClick={() => window.open(proofPreviewUrl, '_blank')}
+        >
+          Preview
+        </Button>
+
+        {/* DOWNLOAD */}
+        <Button
+          type="link"
+          disabled={!proofPreviewUrl}
+          onClick={async () => {
+            if (!proofPreviewUrl) return;
+
+            try {
+              const response = await fetch(proofPreviewUrl, {
+                method: 'GET',
+                headers: { Authorization: `Bearer ${token}` },
+              });
+
+              if (!response.ok) throw new Error();
+
+              const blob = await response.blob();
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a');
+
+              a.href = url;
+              a.download = proofFileName || 'proof_file';
+              a.click();
+
+              window.URL.revokeObjectURL(url);
+              message.success('Tải file thành công');
+            } catch (err) {
+              message.error('Không thể tải file.');
+            }
+          }}
+        >
+          Download
+        </Button>
+      </Space>
+
+      {/* Tên file */}
+      {proofFileName && (
+        <div style={{ marginTop: 6, color: '#555' }}>
+          File đã upload: <b>{proofFileName}</b>
+        </div>
+      )}
+
+      {/* Cảnh báo nếu bước yêu cầu proof */}
+      {selectedStep?.requiredProof && (
+        <Alert
+          style={{ marginTop: 8 }}
+          type="warning"
+          message="Bước này yêu cầu Proof. Vui lòng upload file."
         />
+      )}
+    </>
+  )}
+</Modal>
 
-        {selectedStep?.milestoneType !== 'ADDON' && (
-          <>
-            <Divider orientation="left">Proof Doc ID</Divider>
-            <Space align="center">
-              <Upload
-                customRequest={async ({ file, onSuccess, onError }) => {
-                  try {
-                    const res = await uploadProof(file);
-                    setProofDocId(res.id);
-                    setProofFileName(res.fileName || file.name || '');
-                    setProofPreviewUrl(res.fileLink || `/api/admin/proofs/${res.id}`);
-                    onSuccess(res, file);
-                    message.success(`Đã tải lên: ${file.name}`);
-                  } catch (e) {
-                    onError(e);
-                    message.error('Upload proof thất bại');
-                  }
-                }}
-                showUploadList={false}
-              >
-                <Button icon={<UploadOutlined />}>Tải file proof</Button>
-              </Upload>
-              <Button
-                type="link"
-                disabled={!proofPreviewUrl}
-                href={proofPreviewUrl || undefined}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Download
-              </Button>
-            </Space>
-            <Input
-              style={{ marginTop: 8 }}
-              value={proofDocId}
-              onChange={(e) => {
-                const val = e.target.value;
-                setProofDocId(val);
-                setProofPreviewUrl(val ? `/api/admin/proofs/${val}` : '');
-              }}
-              placeholder="Nhập ID file bằng chứng (nếu bắt buộc)"
-            />
-            {proofFileName && (
-              <div style={{ marginTop: 6, color: '#555' }}>File đã chọn: {proofFileName}</div>
-            )}
-            {selectedStep?.requiredProof && (
-              <Alert
-                style={{ marginTop: 8 }}
-                type="warning"
-                message="Bước này yêu cầu Proof. Vui lòng upload hoặc nhập Proof Doc ID."
-              />
-            )}
-          </>
-        )}
-      </Modal>
 
       <Modal
         title="Chọn gói dịch vụ / Add-on"

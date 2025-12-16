@@ -13,7 +13,8 @@ public class CorsConfig {
         return new WebMvcConfigurer() {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
-                registry.addMapping("/api/**")
+                // Allow both /api/** (existing) and non-/api admin endpoints (e.g. /admin/users)
+                registry.addMapping("/**")
                         .allowedOrigins(
                                 "http://localhost:5173",
                                 "http://127.0.0.1:5173"

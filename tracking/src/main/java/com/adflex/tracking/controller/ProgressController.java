@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/admin/leads")
+@RequestMapping("/api/leads")
 @RequiredArgsConstructor
 public class ProgressController {
 

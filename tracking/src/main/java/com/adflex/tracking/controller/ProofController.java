@@ -26,7 +26,7 @@ import java.util.UUID;
 import java.util.stream.Stream;
 
 @RestController
-@RequestMapping("/api/admin/proofs")
+@RequestMapping("/api/proofs")
 public class ProofController {
 
     private static final Path UPLOAD_DIR = Path.of("uploads");
@@ -52,7 +52,7 @@ public class ProofController {
                 .storedName(storedName)
                 .size(file.getSize())
                 .uploadedAt(Instant.now().toString())
-                .fileLink("/api/admin/proofs/" + id)
+                .fileLink("/api/proofs/" + id)
                 .build();
 
         return ResponseEntity.ok(res);
