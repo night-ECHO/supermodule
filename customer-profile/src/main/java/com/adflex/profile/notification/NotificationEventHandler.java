@@ -1,6 +1,7 @@
 package com.adflex.profile.notification;
 
 import com.adflex.profile.event.*;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
@@ -94,4 +95,15 @@ public class NotificationEventHandler {
                         .build()
         );
     }
+    @EventListener
+public void onLeadReady(LeadReadyEvent e) {
+    notificationService.notify(
+            NotificationEvent.builder()
+                    .type(NotificationType.LEAD_READY)
+                    .leadId(e.leadId())
+                    .phone(e.phone())
+                    .name(e.fullName())
+                    .build()
+    );
+}
 }

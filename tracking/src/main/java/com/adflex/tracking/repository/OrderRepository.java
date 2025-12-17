@@ -3,6 +3,12 @@ package com.adflex.tracking.repository;
 import com.adflex.tracking.entity.Order;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;  // <-- Thêm import này
+
 public interface OrderRepository extends JpaRepository<Order, String> {
-    java.util.List<Order> findByLeadIdOrderByCreatedAtDesc(String leadId);
+    List<Order> findByLeadIdOrderByCreatedAtDesc(String leadId);
+
+    Optional<Order> findByPublicToken(UUID publicToken);  // Giữ cái này là đủ (xóa dòng duplicate)
 }

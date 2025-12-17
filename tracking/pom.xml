@@ -8,6 +8,7 @@
         <groupId>com.adflex</groupId>
         <artifactId>customer-platform</artifactId>
         <version>1.0.0</version>
+        <relativePath>../pom.xml</relativePath>
     </parent>
 
     <artifactId>tracking</artifactId>

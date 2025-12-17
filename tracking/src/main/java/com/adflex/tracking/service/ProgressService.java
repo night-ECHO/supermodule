@@ -1,6 +1,7 @@
 package com.adflex.tracking.service;
 
 import com.adflex.profile.entity.Lead;
+import com.adflex.profile.event.LeadReadyEvent;              // <-- mới thêm
 import com.adflex.profile.event.PaymentConfirmedEvent;
 import com.adflex.profile.event.PaymentWaitingEvent;
 import com.adflex.profile.repository.LeadRepository;
@@ -9,18 +10,22 @@ import com.adflex.tracking.dto.LeadMilestoneDto;
 import com.adflex.tracking.entity.LeadProgress;
 import com.adflex.tracking.entity.MilestoneConfig;
 import com.adflex.tracking.entity.Order;
-import com.adflex.tracking.enums.MilestoneStatus;
-import com.adflex.tracking.enums.MilestoneType;
-import com.adflex.tracking.enums.PaymentStatus;
+import com.adflex.tracking.entity.Package;
+import com.adflex.tracking.enums.*;
 import com.adflex.tracking.repository.LeadProgressRepository;
 import com.adflex.tracking.repository.MilestoneConfigRepository;
 import com.adflex.tracking.repository.OrderRepository;
+import com.adflex.tracking.repository.PackageRepository;
 import jakarta.transaction.Transactional;
-import lombok.RequiredArgsConstructor;
+import lombok.RequiredArgsConstructor;                           // <-- đã đúng chính tả
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.net.URLEncoder;                                    // <-- mới thêm
+import java.nio.charset.StandardCharsets;                      // <-- mới thêm
+import java.time.Instant;                                      // <-- mới thêm
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -35,15 +40,15 @@ public class ProgressService {
     private final OrderRepository orderRepo;
     private final LeadRepository leadRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final PackageRepository packageRepository;
+    private final OrderRepository orderRepository; // vẫn giữ (duplicate nhưng không ảnh hưởng)
 
     // --- 1. HÀM TẠO LEAD (Trigger tự động từ Event) ---
     @Transactional
     public LeadProgress onLeadCreated(String leadId) {
-        // Kiểm tra xem đã có bước CONSULT chưa, nếu có rồi thì trả về luôn
         LeadProgress exist = progressRepo.findByLeadIdAndMilestoneCode(leadId, "STEP_CONSULT");
         if (exist != null) return exist;
 
-        // Tạo bước đầu tiên: Tư vấn & Chốt gói
         LeadProgress lp = LeadProgress.builder()
                 .leadId(leadId)
                 .milestoneCode("STEP_CONSULT")
@@ -56,42 +61,85 @@ public class ProgressService {
         return lp;
     }
 
-    // --- 2. Hàm Confirm Package (Đã cập nhật gửi list Addons) ---
+    // --- 2. PHIÊN BẢN MỚI confirmPackage (thay thế hoàn toàn phiên bản cũ) ---
     @Transactional
     public Map<String, Object> confirmPackage(
             String leadId,
             String packageCode,
-            Iterable<String> addons,
-            boolean isPaid
-    ) {
-        // --- LOGIC CŨ: Xử lý Addon Only ---
-        if (packageCode == null || packageCode.isBlank()) {
-            List<LeadProgress> created = new ArrayList<>();
-            if (addons != null) {
-                for (String addon : addons) {
-                    String code = "ADDON_" + addon.toUpperCase();
-                    MilestoneConfig cfg = configRepo.findByCode(code);
-                    if (cfg == null) throw new RuntimeException("Không tìm thấy addon " + code);
+            List<String> addons,
+            Boolean isPaid) {
 
-                    LeadProgress exist = progressRepo.findByLeadIdAndMilestoneCode(leadId, code);
-                    if (exist != null) continue;
+        Lead lead = leadRepository.findById(UUID.fromString(leadId))
+                .orElseThrow(() -> new RuntimeException("Lead not found: " + leadId));
 
-                    LeadProgress lp = LeadProgress.builder()
-                            .leadId(leadId)
-                            .milestoneCode(code)
-                            .status(MilestoneStatus.IN_PROGRESS)
-                            .startedAt(LocalDateTime.now())
-                            .build();
-                    progressRepo.save(lp);
-                    created.add(lp);
-                }
-            }
-            return Map.of("mode", "ADDON_ONLY", "lead_id", leadId, "steps_created", created);
+        // 1. Tính total_amount server-side từ table packages
+        BigDecimal total = BigDecimal.ZERO;
+        if (packageCode != null && !packageCode.isBlank()) {
+            Package mainPkg = packageRepository.findById(packageCode)
+                    .orElseThrow(() -> new RuntimeException("Invalid package code: " + packageCode));
+            total = total.add(mainPkg.getPrice());
         }
 
-        // --- LOGIC CŨ: Xử lý Gói 1 / Gói 2 ---
-        int level = packageCode.equalsIgnoreCase("GOI_2") ? 2 : 1;
+        List<String> addonList = addons != null ? addons : List.of();
+        for (String addonCode : addonList) {
+            Package addon = packageRepository.findById(addonCode)
+                    .orElseThrow(() -> new RuntimeException("Invalid addon code: " + addonCode));
+            total = total.add(addon.getPrice());
+        }
 
+        // 2. Tạo hoặc update Order (1-1 với lead)
+        Order order = orderRepository.findByLeadIdOrderByCreatedAtDesc(leadId)
+                .stream().findFirst()
+                .orElseGet(Order::new);
+
+        if (order.getId() == null) {
+            order.setId(UUID.randomUUID().toString());
+            order.setLeadId(leadId);
+        }
+        order.setPackageCode(packageCode);
+        order.setAddons(addonList);
+        order.setTotalAmount(total);
+        order.setPublicToken(UUID.randomUUID());
+        // payment_status
+        if (Boolean.TRUE.equals(isPaid)) {
+            order.setPaymentStatus(PaymentStatus.PAID);
+            order.setPaidAt(LocalDateTime.now());
+        } else {
+            order.setPaymentStatus(PaymentStatus.PENDING);
+        }
+        order.setContractStatus(ContractStatus.PENDING);
+        order.setTotalAmount(total);
+if (total != null) {
+    order.setAmount(total.longValue());
+} else {
+    order.setAmount(0L);
+}
+        orderRepository.save(order);
+
+        log.info("Saved full order for lead {}: package={}, addons={}, total={}", leadId, packageCode, addonList, total);
+
+        // 3. Publish event
+        String pkgCodeForEvent = (packageCode != null && !packageCode.isBlank()) ? packageCode : "NO_PACKAGE";
+        if (!Boolean.TRUE.equals(isPaid)) {
+            eventPublisher.publishEvent(new PaymentWaitingEvent(
+                    leadId,
+                    lead.getPhone(),
+                    lead.getFullName(),
+                    pkgCodeForEvent,
+                    addonList
+            ));
+        } else {
+            eventPublisher.publishEvent(new PaymentConfirmedEvent(
+                    leadId,
+                    lead.getPhone(),
+                    lead.getFullName(),
+                    pkgCodeForEvent,
+                    addonList
+            ));
+        }
+
+        // 4. Giữ nguyên logic cũ: unlock STEP_CONSULT và tạo các milestone (core + addon)
+        // -----------------------------------------------------------------------
         // Hoàn thành bước tư vấn
         LeadProgress consult = progressRepo.findByLeadIdAndMilestoneCode(leadId, "STEP_CONSULT");
         if (consult == null) consult = onLeadCreated(leadId);
@@ -99,24 +147,10 @@ public class ProgressService {
         consult.setCompletedAt(LocalDateTime.now());
         progressRepo.save(consult);
 
-        // Tạo Order (lấy đơn mới nhất nếu đã có nhiều đơn)
-        Order order = null;
-        var orders = orderRepo.findByLeadIdOrderByCreatedAtDesc(leadId);
-        if (orders != null && !orders.isEmpty()) {
-            order = orders.get(0);
-        }
-        if (order == null) {
-            order = Order.builder()
-                    .leadId(leadId)
-                    .packageCode(packageCode)
-                    .amount(level == 2 ? 1_999_000L : 999_000L)
-                    .paymentStatus(isPaid ? PaymentStatus.PAID : PaymentStatus.PENDING)
-                    .paidAt(isPaid ? LocalDateTime.now() : null)
-                    .build();
-            orderRepo.save(order);
-        }
+        // Xác định level gói (nếu có) để filter core steps
+        int level = (packageCode != null && packageCode.equalsIgnoreCase("GOI_2")) ? 2 : 1;
 
-        // Tạo các bước Core (ĐKKD, MST...)
+        // Tạo các bước Core
         List<MilestoneConfig> allConfigs = configRepo.findAll();
         List<MilestoneConfig> coreSteps = allConfigs.stream()
                 .filter(c -> c.getType() == MilestoneType.CORE)
@@ -131,7 +165,7 @@ public class ProgressService {
 
             MilestoneStatus status;
             if (cfg.getSequenceOrder() == 2) { // Bước tiếp theo (thường là ĐKKD)
-                status = (cfg.getPaymentRequired() && !isPaid)
+                status = (cfg.getPaymentRequired() && !Boolean.TRUE.equals(isPaid))
                         ? MilestoneStatus.WAITING_PAYMENT
                         : MilestoneStatus.IN_PROGRESS;
             } else {
@@ -148,60 +182,105 @@ public class ProgressService {
             created.add(lp);
         }
 
-        // Tạo Addon kèm theo gói
-        if (addons != null) {
-            for (String addon : addons) {
-                String code = "ADDON_" + addon.toUpperCase();
-                MilestoneConfig cfg = configRepo.findByCode(code);
-                if (cfg != null && progressRepo.findByLeadIdAndMilestoneCode(leadId, code) == null) {
-                    LeadProgress lp = LeadProgress.builder()
-                            .leadId(leadId)
-                            .milestoneCode(code)
-                            .status(MilestoneStatus.IN_PROGRESS)
-                            .startedAt(LocalDateTime.now())
-                            .build();
-                    progressRepo.save(lp);
-                    created.add(lp);
-                }
+        // Tạo Addon (nếu có)
+        for (String addonCode : addonList) {
+            String code = "ADDON_" + addonCode.toUpperCase();
+            MilestoneConfig cfg = configRepo.findByCode(code);
+            if (cfg != null && progressRepo.findByLeadIdAndMilestoneCode(leadId, code) == null) {
+                LeadProgress lp = LeadProgress.builder()
+                        .leadId(leadId)
+                        .milestoneCode(code)
+                        .status(MilestoneStatus.IN_PROGRESS)
+                        .startedAt(LocalDateTime.now())
+                        .build();
+                progressRepo.save(lp);
+                created.add(lp);
             }
         }
+        // -----------------------------------------------------------------------
 
-        // --- BẮN SỰ KIỆN TELEGRAM (MỚI - Đã cập nhật Addons) ---
-        try {
-            // Chuyển đổi Iterable<String> sang List<String> để gửi Event
-            List<String> addonList = new ArrayList<>();
-            if (addons != null) {
-                addons.forEach(addonList::add);
-            }
+        // Trả về response
+        Map<String, Object> response = new HashMap<>();
+        response.put("orderId", order.getId());
+        response.put("publicToken", order.getPublicToken());
+        response.put("totalAmount", total);
+        response.put("qrUrl", generateQrUrl(order));
+        response.put("steps_created", created);
 
-            Lead lead = leadRepository.findById(UUID.fromString(leadId)).orElse(null);
-            if (lead != null) {
-                if (isPaid) {
-                    // Đã thêm addonList vào constructor
-                    eventPublisher.publishEvent(new PaymentConfirmedEvent(
-                            leadId, lead.getPhone(), lead.getFullName(), packageCode, addonList
-                    ));
-                } else {
-                    // Đã thêm addonList vào constructor
-                    eventPublisher.publishEvent(new PaymentWaitingEvent(
-                            leadId, lead.getPhone(), lead.getFullName(), packageCode, addonList
-                    ));
-                }
-                log.info("📢 Sent Telegram event for lead: {}", lead.getFullName());
-            }
-        } catch (Exception e) {
-            log.error("Failed to publish event", e);
-        }
-
-        return Map.of(
-                "mode", "FULL_PACKAGE",
-                "lead_id", leadId,
-                "order_id", order.getId(),
-                "steps_created", created
-        );
+        return response;
     }
 
-    // --- 3. Các hàm bổ trợ (Giữ nguyên logic của bạn) ---
+    private String generateQrUrl(Order order) {
+        return "/payment/qr/" + order.getPublicToken();
+    }
+
+    // --- MỚI: Xác nhận thanh toán (thường gọi từ callback payment gateway hoặc admin) ---
+    @Transactional
+    public void confirmPayment(String leadId, String confirmedBy) {
+        Order order = orderRepository.findByLeadIdOrderByCreatedAtDesc(leadId)
+                .stream().findFirst()
+                .orElseThrow(() -> new RuntimeException("Order not found for lead " + leadId));
+
+        if (order.getPaymentStatus() == PaymentStatus.PAID) {
+            log.info("Payment already confirmed for lead {}", leadId);
+            return;
+        }
+
+        order.setPaymentStatus(PaymentStatus.PAID);
+        order.setPaidAt(LocalDateTime.now());
+        order.setPaymentConfirmedAt(Instant.now());      // <-- mới thêm
+        order.setPaymentConfirmedBy(UUID.fromString(confirmedBy));     
+        if (order.getTotalAmount() != null) {
+        order.setAmount(order.getTotalAmount().longValue());
+    } else {
+        order.setAmount(0L); // hoặc throw exception nếu bắt buộc phải có
+    }
+        
+
+        orderRepository.save(order);
+
+        checkAndTriggerWorkflow(order);                   // <-- gọi kiểm tra workflow
+    }
+
+    // --- MỚI: Xác nhận hợp đồng (thường gọi từ admin sau khi ký) ---
+    @Transactional
+    public void confirmContract(String leadId) {
+        Order order = orderRepository.findByLeadIdOrderByCreatedAtDesc(leadId)
+                .stream().findFirst()
+                .orElseThrow(() -> new RuntimeException("Order not found for lead " + leadId));
+
+        if (order.getContractStatus() == ContractStatus.SIGNED_HARD_COPY) {
+            log.info("Contract already signed for lead {}", leadId);
+            return;
+        }
+
+        order.setContractStatus(ContractStatus.SIGNED_HARD_COPY);
+        orderRepository.save(order);
+
+        checkAndTriggerWorkflow(order);                   // <-- gọi kiểm tra workflow
+    }
+
+    // --- Phương thức kiểm tra điều kiện và trigger LeadReadyEvent ---
+    private void checkAndTriggerWorkflow(Order order) {
+        if (order.getPaymentStatus() == PaymentStatus.PAID
+                && order.getContractStatus() == ContractStatus.SIGNED_HARD_COPY) {
+
+            Lead lead = leadRepository.findById(UUID.fromString(order.getLeadId()))
+                    .orElseThrow(() -> new RuntimeException("Lead not found: " + order.getLeadId()));
+
+            eventPublisher.publishEvent(new LeadReadyEvent(
+                    order.getLeadId(),
+                    lead.getPhone(),
+                    lead.getFullName()
+                    //order.getPackageCode()
+                    //order.getAddons()
+            ));
+
+            log.info("LeadReadyEvent published for lead {}", order.getLeadId());
+        }
+    }
+
+    // --- 3. Các hàm bổ trợ (giữ nguyên) ---
     @Transactional
     public Object updateProgress(String leadId, String milestoneCode, String action, String proofDocId, String proofFileLink, String note) {
         LeadProgress lp = progressRepo.findByLeadIdAndMilestoneCode(leadId, milestoneCode);
@@ -224,7 +303,6 @@ public class ProgressService {
                 lp.setStatus(MilestoneStatus.COMPLETED);
                 lp.setCompletedAt(LocalDateTime.now());
                 lp.setProofDocId(proofDocId);
-                // Logic lưu file link như bạn đã thêm
                 if (proofDocId != null && !proofDocId.isBlank()) {
                     String link = (proofFileLink != null && !proofFileLink.isBlank())
                             ? proofFileLink

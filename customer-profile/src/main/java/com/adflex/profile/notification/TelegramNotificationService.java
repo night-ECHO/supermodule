@@ -32,57 +32,64 @@ public class TelegramNotificationService implements NotificationService {
             case TRACKING_SLA_EXCEEDED -> formatSlaExceeded(e);
             case PAYMENT_WAITING -> formatPaymentWaiting(e);
             case PAYMENT_CONFIRMED -> formatPaymentConfirmed(e);
+            case LEAD_READY -> formatLeadReady(e);  // THÊM CASE NÀY
+            default -> {
+                // Log cảnh báo nếu có type mới mà chưa xử lý
+                System.out.println("Warning: Unknown notification type: " + e.getType());
+                yield "Thông báo hệ thống (chưa định dạng)";
+            }
         };
     }
 
     private String formatLeadNew(NotificationEvent e) {
         return """
-                🚀 KHÁCH HÀNG MỚI ĐĂNG KÝ
-                👤 Tên: %s
-                📞 SĐT: %s
-                📧 Email: %s
+                KHÁCH HÀNG MỚI ĐĂNG KÝ
+                Tên: %s
+                SĐT: %s
+                Email: %s
                 """.formatted(n(e.getName()), n(e.getPhone()), n(e.getEmail()));
     }
 
     private String formatLeadDuplicate(NotificationEvent e) {
         return """
-                ⚠️ CẢNH BÁO: KHÁCH HÀNG TRÙNG LẶP
-                👤 Tên: %s
-                📞 SĐT: %s
-                ℹ️ Khách hàng này đã tồn tại trên hệ thống.
+                LEAD TRÙNG
+                Tên: %s
+                SĐT: %s
+                (Đã tồn tại trong DB)
                 """.formatted(n(e.getName()), n(e.getPhone()));
     }
 
     private String formatSlaExceeded(NotificationEvent e) {
-        Object milestone = e.getExtra() != null ? e.getExtra().get("milestone") : "N/A";
-        Object deadline  = e.getExtra() != null ? e.getExtra().get("deadline")  : "N/A";
-
+        String milestone = e.getExtra() != null ? (String) e.getExtra().get("milestone") : "N/A";
+        String deadline = e.getExtra() != null ? (String) e.getExtra().get("deadline") : "N/A";
         return """
-                🚨 CẢNH BÁO QUÁ HẠN XỬ LÝ (SLA)
-                📌 Bước: %s
-                👤 Khách: %s (%s)
-                ⏳ Deadline: %s
-                👉 Vui lòng kiểm tra tiến độ ngay!
-                """.formatted(
-                n(milestone),
-                n(e.getName()),
-                n(e.getPhone()),
-                n(deadline)
-        );
+                SLA EXCEEDED
+                Khách: %s (%s)
+                Milestone: %s
+                Deadline: %s
+                """.formatted(n(e.getName()), n(e.getPhone()), milestone, deadline);
     }
 
     private String formatPaymentWaiting(NotificationEvent e) {
-        // 1. Lấy tên gói chính
         String pkg = e.getExtra() != null ? (String) e.getExtra().get("package") : "N/A";
-
-        // 2. Lấy danh sách Addon và format
         String fullPackageName = formatPackageWithAddons(pkg, e);
 
         return """
-                💸 YÊU CẦU THANH TOÁN MỚI
-                👤 Khách: %s (%s)
-                📦 Dịch vụ: %s
-                👉 Vui lòng liên hệ khách để hoàn tất thanh toán.
+                CHỜ THANH TOÁN
+                Khách: %s (%s)
+                Dịch vụ: %s
+                """.formatted(n(e.getName()), n(e.getPhone()), fullPackageName);
+    }
+
+    private String formatPaymentConfirmed(NotificationEvent e) {
+        String pkg = e.getExtra() != null ? (String) e.getExtra().get("package") : "N/A";
+        String fullPackageName = formatPackageWithAddons(pkg, e);
+
+        return """
+                THANH TOÁN THÀNH CÔNG
+                Khách: %s (%s)
+                Dịch vụ: %s
+                Hệ thống đã ghi nhận doanh thu và mở khóa bước tiếp theo.
                 """.formatted(
                 n(e.getName()),
                 n(e.getPhone()),
@@ -90,28 +97,18 @@ public class TelegramNotificationService implements NotificationService {
         );
     }
 
-    private String formatPaymentConfirmed(NotificationEvent e) {
-        // 1. Lấy tên gói chính
-        String pkg = e.getExtra() != null ? (String) e.getExtra().get("package") : "N/A";
-
-        // 2. Lấy danh sách Addon và format
-        String fullPackageName = formatPackageWithAddons(pkg, e);
-
+    private String formatLeadReady(NotificationEvent e) {
         return """
-                🎉 THANH TOÁN THÀNH CÔNG
-                👤 Khách: %s (%s)
-                📦 Dịch vụ: %s
-                ✅ Hệ thống đã ghi nhận doanh thu và mở khóa bước tiếp theo.
-                """.formatted(
-                n(e.getName()),
-                n(e.getPhone()),
-                fullPackageName
-        );
+                HỒ SƠ ĐỦ ĐIỀU KIỆN XỬ LÝ
+                Khách: %s
+                SĐT: %s
+                Đã nhận đủ thanh toán + hợp đồng bản cứng
+                Ultra/AdFlex bắt đầu triển khai dịch vụ!
+                """.formatted(n(e.getName()), n(e.getPhone()));
     }
 
     // --- HÀM BỔ TRỢ ---
 
-    // Xử lý việc nối chuỗi gói + addons (Ví dụ: "GOI_2 + WEB + ZALO")
     private String formatPackageWithAddons(String mainPackage, NotificationEvent e) {
         if (e.getExtra() == null || !e.getExtra().containsKey("addons")) {
             return mainPackage;
@@ -119,7 +116,6 @@ public class TelegramNotificationService implements NotificationService {
 
         Object addonsObj = e.getExtra().get("addons");
         if (addonsObj instanceof List<?> list && !list.isEmpty()) {
-            // Nối danh sách addon thành chuỗi
             String addonStr = list.stream()
                     .map(Object::toString)
                     .collect(Collectors.joining(" + "));
