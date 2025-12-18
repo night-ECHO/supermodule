@@ -22,6 +22,7 @@ const TrackingDetail = () => {
   const [lead, setLead] = useState(null);
   const [progress, setProgress] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [order, setOrder] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedStep, setSelectedStep] = useState(null);
   const [note, setNote] = useState('');
@@ -29,6 +30,7 @@ const TrackingDetail = () => {
   const [proofFileName, setProofFileName] = useState('');
   const [proofPreviewUrl, setProofPreviewUrl] = useState('');
   const [packageModalOpen, setPackageModalOpen] = useState(false);
+  const [contractUploadModalOpen, setContractUploadModalOpen] = useState(false);
   const [packageForm] = Form.useForm();
 
   const addonOptions = useMemo(

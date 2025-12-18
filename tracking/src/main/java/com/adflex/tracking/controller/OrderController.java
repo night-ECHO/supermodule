@@ -32,11 +32,11 @@ public class OrderController {
     }
 
     
-    @GetMapping("/public/pay/{token}")
-    public ResponseEntity<?> getPublicOrder(@PathVariable UUID token) {
-        Order order = orderService.getPublicOrderByToken(token);
-        return ResponseEntity.ok(orderService.generatePublicPaymentInfo(order));
-    }
+    // @GetMapping("/public/pay/{token}")
+    // public ResponseEntity<?> getPublicOrder(@PathVariable UUID token) {
+    //     Order order = orderService.getPublicOrderByToken(token);
+    //     return ResponseEntity.ok(orderService.generatePublicPaymentInfo(order));
+    // }
     
 
         // Manual confirm contract (AdFlex only)

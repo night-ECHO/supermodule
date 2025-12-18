@@ -42,11 +42,6 @@ export const updateProgress = async (leadId, milestoneCode, data) => {
   return res.data;
 };
 
-export const confirmPayment = async (orderId) => {
-  const res = await api.post(`/api/admin/payment/pay/${orderId}`);
-  return res.data;
-};
-
 export const confirmPackage = async (leadId, payload) => {
   const res = await api.post(`/api/leads/${leadId}/confirm-package`, payload);
   return res.data;
@@ -56,6 +51,29 @@ export const uploadProof = async (file) => {
   const form = new FormData();
   form.append('file', file);
   const res = await api.post('/api/proofs', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+};
+export const fetchOrder = async (leadId) => {
+  const res = await api.get(`/api/leads/${leadId}/order`); // Giả sử BE có endpoint này, nếu không add BE
+  return res.data;
+};
+
+export const confirmPayment = async (orderId) => {
+  const res = await api.post(`/api/admin/orders/${orderId}/confirm-payment`);
+  return res.data;
+};
+
+export const confirmContract = async (orderId) => {
+  const res = await api.post(`/api/admin/orders/${orderId}/confirm-contract`);
+  return res.data;
+};
+
+export const uploadContract = async (orderId, file) => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await api.post(`/api/admin/orders/${orderId}/upload-contract`, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return res.data;
