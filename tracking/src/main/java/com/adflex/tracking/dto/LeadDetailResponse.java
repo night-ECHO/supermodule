@@ -12,6 +12,7 @@ import java.util.List;
 @Builder
 public class LeadDetailResponse {
     private String id;
+    private String trackingToken;
     private String fullName;
     private String phone;
     private String email;

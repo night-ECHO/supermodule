@@ -11,6 +11,7 @@ import java.time.Instant;
 @Builder
 public class LeadSummaryResponse {
     private String id;
+    private String trackingToken;
     private String fullName;
     private String phone;
     private String email;

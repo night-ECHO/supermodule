@@ -63,6 +63,7 @@ public class LeadAdminController {
         Order order = getLatestOrder(lead.getId().toString());
         return LeadSummaryResponse.builder()
                 .id(lead.getId().toString())
+                .trackingToken(lead.getTrackingToken() != null ? lead.getTrackingToken().toString() : null)
                 .fullName(lead.getFullName())
                 .phone(lead.getPhone())
                 .email(lead.getEmail())
@@ -81,6 +82,7 @@ public class LeadAdminController {
         Order order = getLatestOrder(lead.getId().toString());
         return LeadDetailResponse.builder()
                 .id(lead.getId().toString())
+                .trackingToken(lead.getTrackingToken() != null ? lead.getTrackingToken().toString() : null)
                 .fullName(lead.getFullName())
                 .phone(lead.getPhone())
                 .email(lead.getEmail())

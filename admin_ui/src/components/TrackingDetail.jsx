@@ -8,7 +8,15 @@ import {
   ArrowLeftOutlined,
   UploadOutlined,
 } from '@ant-design/icons';
-import { confirmPayment, confirmPackage, fetchLeadDetail, fetchProgress, updateProgress, uploadProof } from '../api/leads';
+import {
+  confirmPayment,
+  confirmPackage,
+  fetchLeadDetail,
+  fetchProgress,
+  updateDocumentVisibility,
+  updateProgress,
+  uploadProof,
+} from '../api/leads';
 import { useCurrentUser } from '../hooks/useCurrentUser'; // Điều chỉnh đường dẫn nếu cần
 import { useAuth } from '../context/AuthContext';
 
@@ -28,6 +36,7 @@ const TrackingDetail = () => {
   const [proofDocId, setProofDocId] = useState('');
   const [proofFileName, setProofFileName] = useState('');
   const [proofPreviewUrl, setProofPreviewUrl] = useState('');
+  const [proofIsPublic, setProofIsPublic] = useState(false);
   const [packageModalOpen, setPackageModalOpen] = useState(false);
   const [packageForm] = Form.useForm();
 
@@ -102,8 +111,9 @@ const TrackingDetail = () => {
     setSelectedStep(step);
     setNote(step.note || '');
     setProofDocId(step.proofDocId || '');
-    setProofPreviewUrl(step.fileLink || (step.proofDocId ? `/api/proofs/${step.proofDocId}` : ''));
+    setProofPreviewUrl(step.fileLink || (step.proofDocId ? `/api/admin/proofs/${step.proofDocId}` : ''));
     setProofFileName('');
+    setProofIsPublic(false);
     setModalVisible(true);
   };
 
@@ -128,6 +138,9 @@ const TrackingDetail = () => {
       return;
     }
     try {
+      if (proofIsPublic && proofDocId) {
+        await updateDocumentVisibility(proofDocId, true);
+      }
       await updateProgress(id, selectedStep.milestoneCode, {
         action: 'COMPLETE',
         note,
@@ -363,10 +376,14 @@ const TrackingDetail = () => {
         <Upload
           customRequest={async ({ file, onSuccess, onError }) => {
             try {
-              const res = await uploadProof(file);
+              const res = await uploadProof(file, {
+                leadId: id,
+                milestoneCode: selectedStep?.milestoneCode,
+                isPublic: proofIsPublic,
+              });
               setProofDocId(res.id);
               setProofFileName(res.fileName || file.name || '');
-              setProofPreviewUrl(res.fileLink || `/api/proofs/${res.id}`);
+              setProofPreviewUrl(res.fileLink || `/api/admin/proofs/${res.id}`);
 
               onSuccess(res, file);
               message.success(`Đã tải lên: ${file.name}`);
@@ -379,6 +396,10 @@ const TrackingDetail = () => {
         >
           <Button icon={<UploadOutlined />}>Tải file proof</Button>
         </Upload>
+
+        <Checkbox checked={proofIsPublic} onChange={(e) => setProofIsPublic(e.target.checked)}>
+          Công khai tài liệu cho khách hàng
+        </Checkbox>
 
         {/* PREVIEW */}
         <Button

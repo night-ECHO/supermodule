@@ -35,6 +35,8 @@ public class ProgressService {
     private final OrderRepository orderRepo;
     private final LeadRepository leadRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final CustomerCredentialsService customerCredentialsService;
+    private final ZaloPortalNotificationService zaloPortalNotificationService;
 
     // --- 1. HÀM TẠO LEAD (Trigger tự động từ Event) ---
     @Transactional
@@ -177,6 +179,14 @@ public class ProgressService {
             Lead lead = leadRepository.findById(UUID.fromString(leadId)).orElse(null);
             if (lead != null) {
                 if (isPaid) {
+                    String plainAccessCode = customerCredentialsService.ensureCredentials(lead);
+                    if (plainAccessCode != null) {
+                        zaloPortalNotificationService.sendPortalAccess(
+                                lead.getPhone(),
+                                lead.getTrackingToken().toString(),
+                                plainAccessCode
+                        );
+                    }
                     // Đã thêm addonList vào constructor
                     eventPublisher.publishEvent(new PaymentConfirmedEvent(
                             leadId, lead.getPhone(), lead.getFullName(), packageCode, addonList

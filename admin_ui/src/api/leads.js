@@ -52,10 +52,22 @@ export const confirmPackage = async (leadId, payload) => {
   return res.data;
 };
 
-export const uploadProof = async (file) => {
+export const updateDocumentVisibility = async (docId, isPublic) => {
+  const res = await api.patch(`/api/admin/documents/${docId}`, {
+    isPublic,
+  });
+  return res.data;
+};
+
+export const uploadProof = async (file, { leadId, milestoneCode, isPublic } = {}) => {
   const form = new FormData();
   form.append('file', file);
-  const res = await api.post('/api/proofs', form, {
+  const res = await api.post('/api/admin/proofs', form, {
+    params: {
+      lead_id: leadId,
+      milestone_code: milestoneCode,
+      is_public: !!isPublic,
+    },
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return res.data;

@@ -3,6 +3,7 @@ package com.example.user_portal.security;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -46,6 +47,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @Order(2)
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             // No CSRF ignore for H2
@@ -57,6 +59,11 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/error", "/favicon.ico").permitAll()
                 .requestMatchers("/api/auth/**").permitAll()
+                // Internal staff (Ultra) operations: allow proof upload/view for everyone (per product requirement)
+                .requestMatchers("/api/admin/proofs/**").permitAll()
+                .requestMatchers("/api/admin/leads/*/documents").hasAnyAuthority("ADMIN", "MANAGER", "ASSOCIATE")
+                .requestMatchers("/api/admin/documents/**").hasAnyAuthority("ADMIN", "MANAGER", "ASSOCIATE")
+                .requestMatchers("/api/admin/leads/*/customer-portal/**").hasAnyAuthority("ADMIN", "MANAGER", "ASSOCIATE")
                 .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
                 .requestMatchers("/api/webhooks/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/webhooks/google-form").permitAll()

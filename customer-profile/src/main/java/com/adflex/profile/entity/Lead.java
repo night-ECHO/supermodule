@@ -75,4 +75,14 @@ public class Lead {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private Instant updatedAt;
+
+    @Column(name = "tracking_token", columnDefinition = "uuid", unique = true)
+    private UUID trackingToken;
+
+    /**
+     * Customer passcode (recommended: BCrypt hash).
+     * Column name follows spec: access_code.
+     */
+    @Column(name = "access_code")
+    private String accessCode;
 }
