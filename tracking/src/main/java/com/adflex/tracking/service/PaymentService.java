@@ -31,8 +31,6 @@ public class PaymentService {
     private final LeadProgressRepository progressRepo;
     private final LeadRepository leadRepository;
     private final ApplicationEventPublisher eventPublisher;
-    private final CustomerCredentialsService customerCredentialsService;
-    private final ZaloPortalNotificationService zaloPortalNotificationService;
 
     public Order pay(String orderId) {
         return handlePayment(orderId, true);
@@ -58,16 +56,6 @@ public class PaymentService {
             try {
                 Lead lead = leadRepository.findById(UUID.fromString(order.getLeadId())).orElse(null);
                 if (lead != null) {
-                    // Generate portal credentials (tracking_token + access_code) once PAID
-                    String plainAccessCode = customerCredentialsService.ensureCredentials(lead);
-                    if (plainAccessCode != null) {
-                        zaloPortalNotificationService.sendPortalAccess(
-                                lead.getPhone(),
-                                lead.getTrackingToken().toString(),
-                                plainAccessCode
-                        );
-                    }
-
                     // 1. Truy vấn DB để lấy danh sách các Addon đã tạo của Lead này
                     List<String> addons = getAddonsByLeadId(order.getLeadId());
 
@@ -79,10 +67,6 @@ public class PaymentService {
                             order.getPackageCode(),
                             addons // <-- Đã thêm tham số này để khớp với Event mới
                     ));
-                    if (plainAccessCode != null) {
-                        log.info("🔐 Generated customer portal credentials for lead {}, tracking_token={}",
-                                lead.getId(), lead.getTrackingToken());
-                    }
                     log.info("📢 Payment Confirmed Event sent for lead: {}", lead.getFullName());
                 }
             } catch (Exception e) {

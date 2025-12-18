@@ -16,6 +16,14 @@ import {
   updateDocumentVisibility,
   updateProgress,
   uploadProof,
+  initProgress,
+  uploadDocument,
+  fetchDocuments,
+  updateDocument,
+  ensureCustomerPortal,
+  resetCustomerPortalPasscode,
+  confirmOrderContract,
+  uploadContract,
 } from '../api/leads';
 import { useCurrentUser } from '../hooks/useCurrentUser'; // Điều chỉnh đường dẫn nếu cần
 import { useAuth } from '../context/AuthContext';
@@ -40,30 +48,43 @@ const TrackingDetail = () => {
   const [packageModalOpen, setPackageModalOpen] = useState(false);
   const [packageForm] = Form.useForm();
 
-  const addonOptions = useMemo(
-    () => [
-      {
-        label: 'Dịch vụ thuế dài hơn khoảng 3 tháng trong gói 2 (10% commission AdFlex)',
-        value: 'TAX_3M',
-      },
-      { label: 'Tài khoản Zalo business', value: 'ZALO' },
-      { label: 'Tài khoản Google business', value: 'GOOGLE_BUSINESS' },
-      { label: 'Website', value: 'WEB' },
-      { label: 'MiniApp Zalo', value: 'ZALO_MINIAPP' },
-    ],
-    [],
-  );
+  // Documents and portal state
+  const [documents, setDocuments] = useState([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [portalModalVisible, setPortalModalVisible] = useState(false);
+  const [portalData, setPortalData] = useState(null);
+  const [contractUploading, setContractUploading] = useState(false);
+
+const addonOptions = [
+    { label: 'Zalo OA', value: 'ZALO_OA', level: 1 },
+    { label: 'Website', value: 'WEBSITE', level: 2 },
+    { label: 'Dịch vụ kế toán thuế 3 tháng', value: 'ADDON_TAX_3M', level: 1 },
+    { label: 'Google Business', value: 'ADDON_GOOGLE_BUSINESS', level: 1 },
+    { label: 'Zalo MiniApp', value: 'ADDON_ZALO_MINIAPP', level: 2 },
+  ];
+
+  const packageLevels = {
+    GOI_1: 1,
+    GOI_2: 2,
+  };
 
   const loadData = async () => {
     setLoading(true);
+    setDocsLoading(true);
     try {
-      const [leadRes, progressRes] = await Promise.all([fetchLeadDetail(id), fetchProgress(id)]);
+      const [leadRes, progressRes, docsRes] = await Promise.all([
+        fetchLeadDetail(id),
+        fetchProgress(id),
+        fetchDocuments(id),
+      ]);
       setLead(leadRes);
       setProgress(progressRes || []);
+      setDocuments(docsRes || []);
     } catch (err) {
       message.error('Không tải được dữ liệu lead');
     } finally {
       setLoading(false);
+      setDocsLoading(false);
     }
   };
 
@@ -171,21 +192,129 @@ const TrackingDetail = () => {
     setPackageModalOpen(true);
   };
 
+  const [packageSaving, setPackageSaving] = useState(false);
+
   const handleConfirmPackage = async () => {
     try {
+      setPackageSaving(true);
       const values = await packageForm.validateFields();
       const addons = (values.addons || []).map((a) => (a || '').toString().toUpperCase());
-      await confirmPackage(id, {
+      const payload = {
         package_code: values.packageCode || null,
         addons,
         is_paid: values.isPaid || false,
-      });
+      };
+      const res = await confirmPackage(id, payload);
       message.success('Đã cập nhật gói/addon');
       setPackageModalOpen(false);
       loadData();
+      return res;
     } catch (err) {
+      // If AntD validation error, let form show it and don't show generic toast
       if (err?.errorFields) return;
-      message.error('Không cập nhật được gói');
+
+      console.error('confirmPackage error', err);
+      const serverMsg = err?.response?.data?.message || (typeof err?.response?.data === 'string' ? err?.response?.data : null) || err?.message;
+      message.error(serverMsg || 'Không cập nhật được gói');
+    } finally {
+      setPackageSaving(false);
+    }
+  };
+
+  // Documents
+  const handleUploadDocument = async (file) => {
+    try {
+      const res = await uploadDocument(file, { leadId: id, type: 'CUSTOMER', isPublic: false });
+      message.success('Đã upload document');
+      loadData();
+      return res;
+    } catch (e) {
+      message.error('Upload document thất bại');
+      throw e;
+    }
+  };
+
+  const handleToggleDocVisibility = async (doc) => {
+    try {
+      await updateDocument(doc.id, { isPublic: !doc.isPublic });
+      message.success('Đã cập nhật trạng thái tài liệu');
+      loadData();
+    } catch (e) {
+      message.error('Không cập nhật được tài liệu');
+    }
+  };
+
+  // Customer portal
+  const handleEnsurePortal = async () => {
+    try {
+      const res = await ensureCustomerPortal(id);
+      setPortalData(res);
+      Modal.info({
+        title: 'Customer portal credentials',
+        content: (
+          <div>
+            {res.link && <div>Link: <a href={res.link} target="_blank" rel="noreferrer">{res.link}</a></div>}
+            {res.accessCode && <div>Passcode: <b>{res.accessCode}</b></div>}
+          </div>
+        ),
+      });
+    } catch (e) {
+      message.error('Không tạo được portal');
+    }
+  };
+
+  const handleResetPasscode = async () => {
+    try {
+      const res = await resetCustomerPortalPasscode(id);
+      Modal.info({
+        title: 'Customer portal passcode reset',
+        content: (
+          <div>
+            {res.link && <div>Link: <a href={res.link} target="_blank" rel="noreferrer">{res.link}</a></div>}
+            {res.accessCode && <div>New passcode: <b>{res.accessCode}</b></div>}
+          </div>
+        ),
+      });
+      loadData();
+    } catch (e) {
+      message.error('Không reset passcode');
+    }
+  };
+
+  // Contract actions
+  const handleConfirmOrderContract = async () => {
+    if (!lead?.orderId) return message.error('Không tìm thấy đơn hàng');
+    try {
+      await confirmOrderContract(lead.orderId);
+      message.success('Đã xác nhận hợp đồng');
+      loadData();
+    } catch (e) {
+      message.error('Không thể xác nhận hợp đồng');
+    }
+  };
+
+  const handleUploadContract = async (file) => {
+    if (!lead?.orderId) return message.error('Không tìm thấy đơn hàng');
+    try {
+      setContractUploading(true);
+      await uploadContract(lead.orderId, file);
+      message.success('Tải hợp đồng lên thành công');
+      loadData();
+    } catch (e) {
+      message.error('Upload hợp đồng thất bại');
+      throw e;
+    } finally {
+      setContractUploading(false);
+    }
+  };
+
+  const handleInitProgress = async () => {
+    try {
+      await initProgress(id);
+      message.success('Đã khởi tạo tiến trình');
+      loadData();
+    } catch (e) {
+      message.error('Không thể khởi tạo tiến trình');
     }
   };
 
@@ -249,11 +378,50 @@ const TrackingDetail = () => {
           <Descriptions.Item label="Nhu cầu/Ngành nghề">{lead.industryNeeds || '—'}</Descriptions.Item>
           <Descriptions.Item label="MB Ref ID">{lead.mbRefId || '—'}</Descriptions.Item>
           <Descriptions.Item label="Chọn gói/dịch vụ">
+            <Space direction="vertical">
+              <Space>
+                <Button type="primary" onClick={handleOpenPackageModal} size="small">
+                  Cập nhật gói / Add-on
+                </Button>
+                {lead.packageCode && <Tag color="geekblue">{lead.packageCode}</Tag>}
+                {progress.length === 0 && (
+                  <Button size="small" onClick={handleInitProgress}>
+                    Khởi tạo tiến trình
+                  </Button>
+                )}
+              </Space>
+
+              <Space>
+                <Button size="small" onClick={handleConfirmOrderContract} disabled={!lead.orderId}>
+                  Xác nhận hợp đồng
+                </Button>
+
+                <Upload
+                  accept="application/pdf"
+                  customRequest={async ({ file, onSuccess, onError }) => {
+                    try {
+                      await handleUploadContract(file);
+                      onSuccess(null, file);
+                    } catch (e) {
+                      onError(e);
+                    }
+                  }}
+                  showUploadList={false}
+                  disabled={!lead.orderId}
+                >
+                  <Button size="small" icon={<UploadOutlined />}>Tải hợp đồng (PDF)</Button>
+                </Upload>
+              </Space>
+            </Space>
+          </Descriptions.Item>
+
+          <Descriptions.Item label="Cổng khách hàng">
             <Space>
-              <Button type="primary" onClick={handleOpenPackageModal} size="small">
-                Cập nhật gói / Add-on
-              </Button>
-              {lead.packageCode && <Tag color="geekblue">{lead.packageCode}</Tag>}
+              <Button size="small" onClick={handleEnsurePortal}>Sinh link / Gửi</Button>
+              <Button size="small" onClick={handleResetPasscode}>Reset passcode</Button>
+              {lead.trackingToken && (
+                <a href={`${import.meta.env.VITE_PORTAL_BASE || 'https://portal.adflex.vn/track'}/${lead.trackingToken}`} target="_blank" rel="noreferrer">Mở link</a>
+              )}
             </Space>
           </Descriptions.Item>
         </Descriptions>
@@ -332,6 +500,48 @@ const TrackingDetail = () => {
                 </Space>
               </Card>
             ))}
+          </Card>
+
+          <Card title="Tài liệu (Documents)" bordered={false} style={{ marginTop: 16 }}>
+            <Space style={{ marginBottom: 8 }}>
+              <Upload
+                customRequest={async ({ file, onSuccess, onError }) => {
+                  try {
+                    await handleUploadDocument(file);
+                    onSuccess(null, file);
+                  } catch (e) {
+                    onError(e);
+                  }
+                }}
+                showUploadList={false}
+              >
+                <Button icon={<UploadOutlined />}>Tải tài liệu</Button>
+              </Upload>
+            </Space>
+
+            {docsLoading ? (
+              <Spin />
+            ) : documents.length === 0 ? (
+              <div>Không có tài liệu.</div>
+            ) : (
+              documents.map((d) => (
+                <Card type="inner" key={d.id} style={{ marginBottom: 8 }}>
+                  <Row justify="space-between" align="middle">
+                    <Col>
+                      <div><b>{d.name}</b> {d.type && <Tag>{d.type}</Tag>}</div>
+                      <div style={{ color: '#666', fontSize: 12 }}>{d.uploadedAt}</div>
+                    </Col>
+                    <Col>
+                      <Space>
+                        <Button size="small" onClick={() => handleToggleDocVisibility(d)}>
+                          {d.isPublic ? 'Công khai' : 'Riêng tư'}
+                        </Button>
+                      </Space>
+                    </Col>
+                  </Row>
+                </Card>
+              ))
+            )}
           </Card>
         </Col>
       </Row>
@@ -493,9 +703,6 @@ const TrackingDetail = () => {
                 ))}
               </Row>
             </Checkbox.Group>
-          </Form.Item>
-          <Form.Item label="Đã thanh toán?" name="isPaid" valuePropName="checked" initialValue={false}>
-            <Checkbox>Đã xác nhận tiền</Checkbox>
           </Form.Item>
         </Form>
       </Modal>
