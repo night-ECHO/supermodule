@@ -1,6 +1,26 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Button, Row, Col, Tag, Descriptions, Modal, Alert, message, Divider, Spin, Input, Form, Select, Checkbox, Space, Upload } from 'antd';
+import {
+  Card,
+  Button,
+  Row,
+  Col,
+  Tag,
+  Descriptions,
+  Modal,
+  Alert,
+  message,
+  Divider,
+  Spin,
+  Input,
+  Form,
+  Select,
+  Checkbox,
+  Space,
+  Upload,
+  Progress,
+  Steps,
+} from 'antd';
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -62,6 +82,7 @@ const TrackingDetail = () => {
   const [contractUploading, setContractUploading] = useState(false);
   const [contractPreviewUrl, setContractPreviewUrl] = useState('');
   const [contractFileName, setContractFileName] = useState('');
+  const [contractConfirmed, setContractConfirmed] = useState(false);
 
   // Payment QR modal
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
@@ -93,6 +114,20 @@ const addonOptions = [
       setLead(leadRes);
       setProgress(progressRes || []);
       setDocuments(docsRes || []);
+
+      // Contract detection
+      const contractDoc = (docsRes || []).find((d) => (d.type || '').toUpperCase() === 'CONTRACT');
+      if (contractDoc) {
+        setContractPreviewUrl(`/api/admin/documents/${contractDoc.id}/download`);
+        setContractFileName(contractDoc.name || 'contract.pdf');
+      } else {
+        setContractPreviewUrl('');
+        setContractFileName('');
+      }
+      const isContractDone =
+        (leadRes?.contractStatus && leadRes.contractStatus === 'SIGNED_HARD_COPY') ||
+        !!contractDoc;
+      setContractConfirmed(isContractDone);
 
       // Try fetch portal link (safe GET that DOES NOT reset access code)
       if (leadRes?.trackingToken) {
@@ -145,6 +180,27 @@ const addonOptions = [
         return 'wait';
     }
   };
+
+  const statusMeta = {
+    COMPLETED: { color: 'green', label: 'Hoàn thành' },
+    IN_PROGRESS: { color: 'blue', label: 'Đang làm' },
+    WAITING_PAYMENT: { color: 'red', label: 'Chờ thanh toán' },
+    LOCKED: { color: 'default', label: 'Chờ mở khóa' },
+    default: { color: 'default', label: 'Chưa bắt đầu' },
+  };
+
+  const completedCount = coreFlow.filter((s) => s.status === 'COMPLETED').length;
+  const totalSteps = coreFlow.length || 1;
+  const completionPercent = Math.round((completedCount / totalSteps) * 100);
+
+  const currentStepIndex =
+    coreFlow.findIndex((s) => s.status !== 'COMPLETED') === -1
+      ? Math.max(coreFlow.length - 1, 0)
+      : coreFlow.findIndex((s) => s.status !== 'COMPLETED');
+
+  const nextStep =
+    coreFlow.find((s) => s.status === 'IN_PROGRESS' || s.status === 'WAITING_PAYMENT') ||
+    coreFlow.find((s) => s.status !== 'COMPLETED');
 
   const handleStepClick = (step) => {
     if (step.status === 'LOCKED') {
@@ -253,7 +309,10 @@ const addonOptions = [
   };
 
   const handleOpenPackageModal = () => {
-    packageForm.resetFields();
+    packageForm.setFieldsValue({
+      packageCode: lead?.packageCode || undefined,
+      addons: Array.isArray(lead?.addons) ? lead.addons : undefined,
+    });
     setPackageModalOpen(true);
   };
 
@@ -264,8 +323,10 @@ const addonOptions = [
       setPackageSaving(true);
       const values = await packageForm.validateFields();
       const addons = (values.addons || []).map((a) => (a || '').toString().toUpperCase());
+      const packageCode = values.packageCode || lead?.packageCode || null;
+
       const payload = {
-        package_code: values.packageCode || null,
+        package_code: packageCode,
         addons,
         is_paid: values.isPaid || false,
       };
@@ -356,11 +417,16 @@ const addonOptions = [
   const handleConfirmOrderContract = async () => {
     if (!lead?.orderId) return message.error('Không tìm thấy đơn hàng');
     try {
-      await confirmOrderContract(lead.orderId);
+      const res = await confirmOrderContract(lead.orderId);
       message.success('Đã xác nhận hợp đồng');
+      setContractConfirmed(true);
+      if (res?.contractStatus) {
+        setLead((prev) => ({ ...prev, contractStatus: res.contractStatus }));
+      }
       loadData();
     } catch (e) {
-      message.error('Không thể xác nhận hợp đồng');
+      const msg = e?.response?.data?.message || e?.message || 'Không thể xác nhận hợp đồng';
+      message.error(msg);
     }
   };
 
@@ -457,8 +523,8 @@ const addonOptions = [
               </Button>
             )}
           </Descriptions.Item>
-          <Descriptions.Item label="Địa chỉ DN">{lead.businessAddress || '—'}</Descriptions.Item>
-          <Descriptions.Item label="Tên DN gợi ý">
+          <Descriptions.Item label="Địa chỉ doanh nghiệp">{lead.businessAddress || '—'}</Descriptions.Item>
+          <Descriptions.Item label="Tên doanh nghiệp">
             {lead.businessNameOptions?.length ? lead.businessNameOptions.join(', ') : '—'}
           </Descriptions.Item>
           <Descriptions.Item label="Nhu cầu/Ngành nghề">{lead.industryNeeds || '—'}</Descriptions.Item>
@@ -479,7 +545,7 @@ const addonOptions = [
 
               <Space>
                 <Button size="small" onClick={handleConfirmOrderContract} disabled={!lead.orderId}>
-                  Xác nhận hợp đồng
+                  {contractConfirmed ? 'Đã xác nhận hợp đồng' : 'Xác nhận hợp đồng'}
                 </Button>
 
                 <Upload
@@ -582,7 +648,28 @@ const addonOptions = [
 
       <Row gutter={24}>
         <Col span={16}>
-          <Card title="Quy trình xử lý (Core Flow)" bordered={false}>
+          {lead.packageCode ? (
+          <Card
+            title="Quy trình xử lý (Core Flow)"
+            bordered={false}
+            extra={
+              <Space size={16}>
+                <div style={{ minWidth: 170 }}>
+                  <div style={{ fontSize: 12, color: '#888' }}>Hoàn thành</div>
+                  <Progress percent={completionPercent} size="small" showInfo />
+                </div>
+                {nextStep && (
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 12, color: '#888' }}>Bước hiện tại</div>
+                    <div style={{ fontWeight: 600, maxWidth: 220 }}>{nextStep.milestoneName || nextStep.milestoneCode}</div>
+                    <Tag color={statusMeta[nextStep.status]?.color || statusMeta.default.color} style={{ marginTop: 4 }}>
+                      {statusMeta[nextStep.status]?.label || statusMeta.default.label}
+                    </Tag>
+                  </div>
+                )}
+              </Space>
+            }
+          >
             {coreFlow.find((s) => s.status === 'WAITING_PAYMENT') && (
               <Alert
                 message="Đang chờ thanh toán"
@@ -593,26 +680,83 @@ const addonOptions = [
               />
             )}
 
+            <div style={{ padding: '8px 12px', border: '1px dashed #d9d9d9', borderRadius: 10, marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ fontWeight: 600 }}>Lộ trình</div>
+                <Tag color="blue">Hiện tại: {currentStepIndex + 1}/{coreFlow.length || 1}</Tag>
+              </div>
+              <Steps
+                size="small"
+                current={currentStepIndex}
+                type="dot"
+                items={coreFlow.map((step) => ({
+                  title: step.milestoneName || step.milestoneCode,
+                  description: statusMeta[step.status]?.label || statusMeta.default.label,
+                  status: getStepStatus(step.status),
+                }))}
+              />
+            </div>
+
             <Row gutter={[16, 16]}>
-              {coreFlow.map((step) => (
+              {coreFlow.map((step, idx) => (
                 <Col span={12} key={step.milestoneCode}>
                   <Card
                     type="inner"
-                    title={step.milestoneName || step.milestoneCode}
-                    extra={<a onClick={() => handleStepClick(step)}>Chi tiết</a>}
+                    title={
+                      <Space align="start">
+                        <div
+                          style={{
+                            width: 30,
+                            height: 30,
+                            borderRadius: '50%',
+                            background: '#f0f5ff',
+                            color: '#2f54eb',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {idx + 1}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{step.milestoneName || step.milestoneCode}</div>
+                          <div style={{ fontSize: 12, color: '#888' }}>Mã: {step.milestoneCode}</div>
+                        </div>
+                      </Space>
+                    }
+                    extra={
+                      <a onClick={() => handleStepClick(step)} style={{ fontWeight: 600 }}>
+                        Chi tiết
+                      </a>
+                    }
                     style={{
                       borderLeft: `5px solid ${
                         step.status === 'COMPLETED' ? '#52c41a' : step.status === 'IN_PROGRESS' ? '#1890ff' : '#d9d9d9'
                       }`,
+                      background:
+                        step.status === 'IN_PROGRESS'
+                          ? 'linear-gradient(90deg, #f0f5ff 0%, #ffffff 60%)'
+                          : undefined,
                     }}
                   >
                     <div style={{ marginBottom: 8 }}>
                       Trạng thái:{' '}
-                      <Tag color={step.status === 'COMPLETED' ? 'green' : step.status === 'IN_PROGRESS' ? 'blue' : 'default'}>
+                      <Tag color={statusMeta[step.status]?.color || statusMeta.default.color}>
                         {step.status}
                       </Tag>
                     </div>
                     <Space>
+                      {step.status === 'WAITING_PAYMENT' && (
+                        <Tag color="red" bordered={false}>
+                          Cần thanh toán
+                        </Tag>
+                      )}
+                      {step.status === 'LOCKED' && (
+                        <Tag color="default" bordered={false}>
+                          Chưa mở khóa
+                        </Tag>
+                      )}
                       {step.status === 'IN_PROGRESS' && (
                         <Button size="small" type="primary" onClick={() => handleStepClick(step)}>
                           Nhập ghi chú / Hoàn thành
@@ -624,6 +768,16 @@ const addonOptions = [
               ))}
             </Row>
           </Card>
+          ) : (
+            <Card title="Quy trình xử lý (Core Flow)" bordered={false}>
+              <Alert
+                message="Chưa chọn gói dịch vụ"
+                description="Chọn gói để khởi tạo quy trình."
+                type="info"
+                showIcon
+              />
+            </Card>
+          )}
         </Col>
 
         <Col span={8}>
@@ -641,7 +795,7 @@ const addonOptions = [
                 }}
               >
                 Trạng thái:{' '}
-                <Tag color={addon.status === 'COMPLETED' ? 'green' : addon.status === 'IN_PROGRESS' ? 'blue' : 'default'}>
+                <Tag color={statusMeta[addon.status]?.color || statusMeta.default.color}>
                   {addon.status}
                 </Tag>
                 <Space style={{ marginTop: 8 }}>
@@ -669,7 +823,10 @@ const addonOptions = [
       key="submit"
       type="primary"
       onClick={handleCompleteStep}
-      disabled={selectedStep?.status === 'COMPLETED'}
+      disabled={
+        selectedStep?.status === 'COMPLETED' ||
+        (selectedStep?.requiredProof && !proofDocId)
+      }
     >
       Hoàn thành Bước
     </Button>,

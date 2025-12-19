@@ -29,7 +29,7 @@ public class Order {
     @Column(name = "lead_id", nullable = false)
     private String leadId;
 
-    @Column(name = "package_code", nullable = false)
+    @Column(name = "package_code")
     private String packageCode;
 
     // New: Addons as JSONB array

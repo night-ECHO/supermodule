@@ -27,7 +27,8 @@ public class OrderController {
             @PathVariable String orderId,
             Principal principal // Lấy user hiện tại (AdFlex Ops)
     ) {
-        Order updatedOrder = orderService.confirmPayment(orderId, principal.getName());
+        String actor = principal != null ? principal.getName() : "system";
+        Order updatedOrder = orderService.confirmPayment(orderId, actor);
         return ResponseEntity.ok(updatedOrder);
     }
 
@@ -49,7 +50,8 @@ public class OrderController {
             @PathVariable String orderId,
             Principal principal
     ) {
-        Order updatedOrder = orderService.confirmContract(orderId, principal.getName());
+        String actor = principal != null ? principal.getName() : "system";
+        Order updatedOrder = orderService.confirmContract(orderId, actor);
         return ResponseEntity.ok(updatedOrder);
     }
 

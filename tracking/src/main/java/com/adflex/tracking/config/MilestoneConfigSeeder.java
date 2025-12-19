@@ -128,8 +128,49 @@ public class MilestoneConfigSeeder implements CommandLineRunner {
                 .build());
     }
 
-    private void saveIfMissing(MilestoneConfig config) {
-        if (repo.findByCode(config.getCode()) != null) return;
-        repo.save(config);
+    private void saveIfMissing(MilestoneConfig desired) {
+        MilestoneConfig existing = repo.findByCode(desired.getCode());
+        if (existing == null) {
+            repo.save(desired);
+            return;
+        }
+
+        boolean changed = false;
+        if (!equals(existing.getName(), desired.getName())) {
+            existing.setName(desired.getName());
+            changed = true;
+        }
+        if (existing.getType() != desired.getType()) {
+            existing.setType(desired.getType());
+            changed = true;
+        }
+        if (!equals(existing.getSequenceOrder(), desired.getSequenceOrder())) {
+            existing.setSequenceOrder(desired.getSequenceOrder());
+            changed = true;
+        }
+        if (!equals(existing.getPaymentRequired(), desired.getPaymentRequired())) {
+            existing.setPaymentRequired(desired.getPaymentRequired());
+            changed = true;
+        }
+        if (!equals(existing.getRequiredProof(), desired.getRequiredProof())) {
+            existing.setRequiredProof(desired.getRequiredProof());
+            changed = true;
+        }
+        if (!equals(existing.getSlaHours(), desired.getSlaHours())) {
+            existing.setSlaHours(desired.getSlaHours());
+            changed = true;
+        }
+        if (!equals(existing.getMinPackageLevel(), desired.getMinPackageLevel())) {
+            existing.setMinPackageLevel(desired.getMinPackageLevel());
+            changed = true;
+        }
+
+        if (changed) {
+            repo.save(existing);
+        }
+    }
+
+    private boolean equals(Object a, Object b) {
+        return a == null ? b == null : a.equals(b);
     }
 }

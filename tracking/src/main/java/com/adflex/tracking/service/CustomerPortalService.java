@@ -49,12 +49,16 @@ public class CustomerPortalService {
                         .build())
                 .toList();
 
-        String currentStatus = milestones.stream()
-                .filter(m -> m.getStatus() != null)
-                .map(m -> m.getStatus().name())
-                .filter(s -> "IN_PROGRESS".equals(s) || "WAITING_PAYMENT".equals(s))
-                .findFirst()
-                .orElse("IN_PROGRESS");
+        String currentStatus;
+        if (milestones.stream().anyMatch(m -> m.getStatus() != null && "WAITING_PAYMENT".equals(m.getStatus().name()))) {
+            currentStatus = "WAITING_PAYMENT";
+        } else if (milestones.stream().anyMatch(m -> m.getStatus() != null && "IN_PROGRESS".equals(m.getStatus().name()))) {
+            currentStatus = "IN_PROGRESS";
+        } else if (!milestones.isEmpty() && milestones.stream().allMatch(m -> m.getStatus() != null && "COMPLETED".equals(m.getStatus().name()))) {
+            currentStatus = "COMPLETED";
+        } else {
+            currentStatus = "IN_PROGRESS";
+        }
 
         List<CustomerDocumentDto> documents = documentRepository.findByLeadIdAndIsPublicTrueOrderByUploadedAtDesc(lead.getId()).stream()
                 .map(d -> CustomerDocumentDto.builder()

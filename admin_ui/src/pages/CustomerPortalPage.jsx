@@ -1,7 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Button, Card, Col, Divider, Form, Input, Modal, Row, Space, Spin, Tag, Typography, message } from 'antd';
-import { CheckCircleOutlined, ClockCircleOutlined, DownloadOutlined, LockOutlined } from '@ant-design/icons';
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  Divider,
+  Form,
+  Input,
+  Modal,
+  Row,
+  Space,
+  Spin,
+  Tag,
+  Typography,
+  message,
+  Steps,
+  Progress,
+} from 'antd';
+import { CheckCircleOutlined, ClockCircleOutlined, DownloadOutlined, LockOutlined, FilePdfOutlined } from '@ant-design/icons';
 import { customerAuth, downloadCustomerDocument, fetchCustomerTracking } from '../api/customerApi';
 
 const statusColor = (status) => {
@@ -56,6 +73,10 @@ const CustomerPortalPage = () => {
   const coreFlow = useMemo(
     () => timeline.filter((s) => (s.milestoneType || '').toUpperCase() === 'CORE'),
     [timeline],
+  );
+  const contractDoc = useMemo(
+    () => documents.find((d) => (d.type || '').toUpperCase() === 'CONTRACT'),
+    [documents],
   );
   const docsByMilestone = useMemo(() => {
     const map = new Map();
@@ -134,26 +155,92 @@ const CustomerPortalPage = () => {
   }
 
   const companyName = tracking?.lead_info?.company_name || 'Hồ sơ';
+  const completedCount = coreFlow.filter((s) => s.status === 'COMPLETED').length;
+  const totalSteps = coreFlow.length || 1;
+  const completionPercent = Math.round((completedCount / totalSteps) * 100);
+
+  const derivedStatus = (() => {
+    if (coreFlow.some((s) => s.status === 'WAITING_PAYMENT')) return 'WAITING_PAYMENT';
+    if (coreFlow.some((s) => s.status === 'IN_PROGRESS')) return 'IN_PROGRESS';
+    if (coreFlow.length > 0 && coreFlow.every((s) => s.status === 'COMPLETED')) return 'COMPLETED';
+    return tracking?.current_status || 'IN_PROGRESS';
+  })();
+
+  const statusLabel = (s) => {
+    switch (s) {
+      case 'COMPLETED':
+        return 'Hoàn thành';
+      case 'IN_PROGRESS':
+        return 'Đang thực hiện';
+      case 'WAITING_PAYMENT':
+        return 'Chờ thanh toán';
+      case 'LOCKED':
+        return 'Chưa mở khóa';
+      default:
+        return s || 'N/A';
+    }
+  };
 
   return (
     <div style={{ padding: 16, maxWidth: 1200, margin: '0 auto' }}>
       <Space direction="vertical" style={{ width: '100%' }} size={16}>
         <Card bordered>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            Tiến độ thành lập công ty {companyName}
-          </Typography.Title>
-          {tracking?.current_status && (
-            <div style={{ marginTop: 8 }}>
-              Trạng thái hiện tại:{' '}
-              <Tag color={statusColor(tracking.current_status)} icon={tracking.current_status === 'COMPLETED' ? <CheckCircleOutlined /> : <ClockCircleOutlined />}>
-                {tracking.current_status}
-              </Tag>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <Typography.Title level={4} style={{ margin: 0 }}>
+                Tiến độ thành lập công ty {companyName}
+              </Typography.Title>
+              <div style={{ marginTop: 8 }}>
+                Trạng thái hiện tại:{' '}
+                <Tag
+                  color={statusColor(derivedStatus)}
+                  icon={derivedStatus === 'COMPLETED' ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
+                  style={{ fontWeight: 600 }}
+                >
+                  {statusLabel(derivedStatus)}
+                </Tag>
+              </div>
+            </div>
+            <div style={{ minWidth: 200, textAlign: 'right' }}>
+              <div style={{ fontSize: 12, color: '#888' }}>Hoàn thành</div>
+              <Progress percent={completionPercent} size="small" showInfo />
+              <div style={{ fontSize: 12, color: '#888' }}>
+                Bước: {Math.min(completedCount + 1, totalSteps)}/{totalSteps}
+              </div>
+            </div>
+          </div>
+          {contractDoc && (
+            <div style={{ marginTop: 12 }}>
+              <Button type="primary" icon={<FilePdfOutlined />} onClick={() => handleDownload(contractDoc)}>
+                Tải hợp đồng (PDF)
+              </Button>
+              <span style={{ marginLeft: 8, color: '#555' }}>{contractDoc.name}</span>
             </div>
           )}
         </Card>
 
         <Card title="Quy trình xử lý (Core Flow)" bordered={false}>
           {coreFlow.length === 0 && <Alert type="info" message="Chưa có dữ liệu tiến trình" />}
+          {coreFlow.length > 0 && (
+            <div style={{ padding: '8px 12px', border: '1px dashed #d9d9d9', borderRadius: 10, marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ fontWeight: 600 }}>Lộ trình</div>
+                <Tag color="blue">
+                  Hiện tại: {Math.min(completedCount + 1, totalSteps)}/{totalSteps}
+                </Tag>
+              </div>
+              <Steps
+                size="small"
+                current={Math.min(completedCount, totalSteps - 1)}
+                type="dot"
+                items={coreFlow.map((step) => ({
+                  title: step.name || step.code,
+                  description: statusLabel(step.status),
+                  status: step.status === 'COMPLETED' ? 'finish' : step.status === 'IN_PROGRESS' ? 'process' : 'wait',
+                }))}
+              />
+            </div>
+          )}
           <Row gutter={[16, 16]}>
             {coreFlow.map((step) => (
               <Col xs={24} sm={12} key={step.code}>
@@ -163,12 +250,16 @@ const CustomerPortalPage = () => {
                   extra={<a onClick={() => setSelectedStep(step)}>Chi tiết</a>}
                   style={{
                     borderLeft: `5px solid ${step.status === 'COMPLETED' ? '#52c41a' : step.status === 'IN_PROGRESS' ? '#faad14' : '#d9d9d9'}`,
+                    background:
+                      step.status === 'IN_PROGRESS'
+                        ? 'linear-gradient(90deg, #f0f5ff 0%, #ffffff 60%)'
+                        : undefined,
                   }}
                 >
                   <div style={{ marginBottom: 8 }}>
                     Trạng thái:{' '}
-                    <Tag color={statusColor(step.status)}>
-                      {step.status}
+                    <Tag color={statusColor(step.status)} style={{ fontWeight: 600 }}>
+                      {statusLabel(step.status)}
                     </Tag>
                   </div>
                 </Card>
@@ -205,7 +296,7 @@ const CustomerPortalPage = () => {
       >
         <div style={{ marginBottom: 8 }}>
           Trạng thái:{' '}
-          <Tag color={statusColor(selectedStep?.status)}>{selectedStep?.status}</Tag>
+          <Tag color={statusColor(selectedStep?.status)}>{statusLabel(selectedStep?.status)}</Tag>
         </div>
 
         {selectedStep?.note && (

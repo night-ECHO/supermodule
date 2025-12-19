@@ -83,10 +83,6 @@ public class OrderService {
 
         log.info("Payment confirmed manually for order {} by {}", orderId, confirmedByUsername);
 
-        // TODO: Publish event PaymentConfirmedEvent (tái sử dụng từ PaymentService cũ)
-        // + notify Zalo/Telegram
-        // checkIfBothConfirmedAndTrigger(order); // Sẽ implement ở phần cuối
-
         return order;
     }
 

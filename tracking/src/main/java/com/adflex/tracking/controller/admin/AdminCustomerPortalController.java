@@ -7,6 +7,7 @@ import com.adflex.tracking.service.CustomerCredentialsService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -65,6 +66,19 @@ public class AdminCustomerPortalController {
 
         String plain = customerCredentialsService.resetAccessCode(lead);
         return ResponseEntity.ok(toResponse(lead, plain, portalBaseUrlOverride));
+    }
+
+    /**
+     * Safe GET to fetch existing portal link (không reset passcode).
+     */
+    @GetMapping("/{leadId}/customer-portal/link")
+    public ResponseEntity<AdminCustomerPortalCredentialsResponse> link(
+            @PathVariable("leadId") String leadId,
+            @RequestParam(value = "portal_base_url", required = false) String portalBaseUrlOverride
+    ) {
+        Lead lead = leadRepository.findById(UUID.fromString(leadId))
+                .orElseThrow(() -> new RuntimeException("Lead not found"));
+        return ResponseEntity.ok(toResponse(lead, null, portalBaseUrlOverride));
     }
 
     private AdminCustomerPortalCredentialsResponse toResponse(Lead lead, String accessCodePlain, String portalBaseUrlOverride) {
