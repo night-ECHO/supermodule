@@ -98,8 +98,8 @@ public class OrderService {
     public Map<String, Object> generatePublicPaymentInfo(Order order) {
         // Config bank - hard-code tạm theo công ty AdFlex
         // Config bank công ty AdFlex - theo tìm hiểu, thường dùng Vietcombank
-        String bankId = "vietcombank"; // hoặc "VCB" lowercase, hoặc BIN "970436" nếu cần
-        String accountNo = "0011001938888"; // Ví dụ Quỹ vắc xin, THAY BẰNG TK THỰC CỦA ADFLEX
+        String bankId = "mbbank"; // hoặc "VCB" lowercase, hoặc BIN "970436" nếu cần
+        String accountNo = "0915335807"; // Ví dụ Quỹ vắc xin, THAY BẰNG TK THỰC CỦA ADFLEX
         String accountName = "CONG TY CO PHAN ADFLEX VIET NAM"; // THAY BẰNG TÊN CHỦ TK THỰC
         String template = "compact2"; // Đẹp nhất, có logo ngân hàng
         String extension = "jpg"; // hoặc png
@@ -127,6 +127,12 @@ public class OrderService {
         response.put("paymentLink", "https://portal.adflex.vn/pay/" + order.getPublicToken()); // Link chia sẻ
 
         return response;
+    }
+
+    public Map<String, Object> getPublicPaymentInfoByOrderId(String orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+        return generatePublicPaymentInfo(order);
     }
 
     // TODO: Inject storage service (S3, MinIO, hoặc local) - tạm giả sử có

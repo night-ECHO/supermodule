@@ -7,6 +7,9 @@ import {
   DollarOutlined,
   ArrowLeftOutlined,
   UploadOutlined,
+  QrcodeOutlined,
+  LinkOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
 import {
   confirmPayment,
@@ -22,6 +25,8 @@ import {
   updateDocument,
   ensureCustomerPortal,
   resetCustomerPortalPasscode,
+  getCustomerPortalLink,
+  fetchOrderPaymentInfo,
   confirmOrderContract,
   uploadContract,
 } from '../api/leads';
@@ -53,7 +58,15 @@ const TrackingDetail = () => {
   const [docsLoading, setDocsLoading] = useState(false);
   const [portalModalVisible, setPortalModalVisible] = useState(false);
   const [portalData, setPortalData] = useState(null);
+  const [portalLink, setPortalLink] = useState('');
   const [contractUploading, setContractUploading] = useState(false);
+  const [contractPreviewUrl, setContractPreviewUrl] = useState('');
+  const [contractFileName, setContractFileName] = useState('');
+
+  // Payment QR modal
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [paymentInfo, setPaymentInfo] = useState(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
 const addonOptions = [
     { label: 'Zalo OA', value: 'ZALO_OA', level: 1 },
@@ -80,6 +93,19 @@ const addonOptions = [
       setLead(leadRes);
       setProgress(progressRes || []);
       setDocuments(docsRes || []);
+
+      // Try fetch portal link (safe GET that DOES NOT reset access code)
+      if (leadRes?.trackingToken) {
+        try {
+          const linkRes = await getCustomerPortalLink(id);
+          setPortalLink(linkRes?.link || '');
+        } catch (e) {
+          // ignore — optional link
+          setPortalLink('');
+        }
+      } else {
+        setPortalLink('');
+      }
     } catch (err) {
       message.error('Không tải được dữ liệu lead');
     } finally {
@@ -151,6 +177,45 @@ const addonOptions = [
       message.error('Không xác nhận được thanh toán');
     }
   };
+
+  const handleOpenPaymentModal = async () => {
+    if (!lead?.orderId) {
+      message.error('Không tìm thấy đơn hàng để tạo thông tin thanh toán');
+      return;
+    }
+    setPaymentLoading(true);
+    try {
+      const info = await fetchOrderPaymentInfo(lead.orderId);
+      setPaymentInfo(info);
+      setPaymentModalVisible(true);
+    } catch (err) {
+      message.error('Không lấy được thông tin thanh toán');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const handleCopyPaymentLink = async () => {
+    if (!paymentInfo?.paymentLink) return;
+    try {
+      await navigator.clipboard.writeText(paymentInfo.paymentLink);
+      message.success('Đã sao chép link thanh toán');
+    } catch (err) {
+      message.error('Không sao chép được link');
+    }
+  };
+
+  const handleRefreshPaymentInfo = async () => {
+    try {
+      await loadData();
+      if (lead?.orderId) {
+        const info = await fetchOrderPaymentInfo(lead.orderId);
+        setPaymentInfo(info);
+      }
+    } catch (err) {
+      // ignore
+    }
+  }; 
 
   const handleCompleteStep = async () => {
     if (!selectedStep) return;
@@ -246,9 +311,11 @@ const addonOptions = [
 
   // Customer portal
   const handleEnsurePortal = async () => {
+    const portalBase = import.meta.env.VITE_PORTAL_BASE || window.location.origin || 'http://localhost:5173';
     try {
-      const res = await ensureCustomerPortal(id);
+      const res = await ensureCustomerPortal(id, portalBase);
       setPortalData(res);
+      setPortalLink(res?.link || '');
       Modal.info({
         title: 'Customer portal credentials',
         content: (
@@ -259,13 +326,16 @@ const addonOptions = [
         ),
       });
     } catch (e) {
-      message.error('Không tạo được portal');
+      const msg = e?.response?.data?.message || e?.message || 'Không tạo được portal';
+      message.error(msg);
     }
   };
 
   const handleResetPasscode = async () => {
+    const portalBase = import.meta.env.VITE_PORTAL_BASE || window.location.origin || 'http://localhost:5173';
     try {
-      const res = await resetCustomerPortalPasscode(id);
+      const res = await resetCustomerPortalPasscode(id, portalBase);
+      setPortalLink(res?.link || '');
       Modal.info({
         title: 'Customer portal passcode reset',
         content: (
@@ -277,7 +347,8 @@ const addonOptions = [
       });
       loadData();
     } catch (e) {
-      message.error('Không reset passcode');
+      const msg = e?.response?.data?.message || e?.message || 'Không reset passcode';
+      message.error(msg);
     }
   };
 
@@ -297,11 +368,15 @@ const addonOptions = [
     if (!lead?.orderId) return message.error('Không tìm thấy đơn hàng');
     try {
       setContractUploading(true);
-      await uploadContract(lead.orderId, file);
-      message.success('Tải hợp đồng lên thành công');
+      const res = await uploadContract(lead.orderId, file);
+      setContractPreviewUrl(res?.fileLink || '');
+      setContractFileName(file.name || 'contract.pdf');
+      message.success(res?.message || 'Tải hợp đồng lên thành công');
       loadData();
+      return res;
     } catch (e) {
-      message.error('Upload hợp đồng thất bại');
+      const msg = e?.response?.data?.message || e?.message || 'Upload hợp đồng thất bại';
+      message.error(msg);
       throw e;
     } finally {
       setContractUploading(false);
@@ -358,6 +433,17 @@ const addonOptions = [
                 CHƯA THANH TOÁN
               </Tag>
             )}
+            {/* Nút tạo QR thanh toán - hiển thị nếu chưa thanh toán và có orderId */}
+            {!paymentPaid && lead?.orderId && (
+              <Button
+                size="small"
+                onClick={handleOpenPaymentModal}
+                icon={<QrcodeOutlined />}
+                style={{ marginLeft: 12 }}
+              >
+                Thanh toán
+              </Button>
+            )}
             {/* Chỉ hiển thị nút xác nhận thanh toán nếu chưa thanh toán và user là admin */}
             {!paymentPaid && isAdmin && (
               <Button
@@ -400,8 +486,9 @@ const addonOptions = [
                   accept="application/pdf"
                   customRequest={async ({ file, onSuccess, onError }) => {
                     try {
-                      await handleUploadContract(file);
-                      onSuccess(null, file);
+                      const res = await handleUploadContract(file);
+                      if (res) onSuccess(res, file);
+                      else onSuccess(null, file);
                     } catch (e) {
                       onError(e);
                     }
@@ -411,6 +498,36 @@ const addonOptions = [
                 >
                   <Button size="small" icon={<UploadOutlined />}>Tải hợp đồng (PDF)</Button>
                 </Upload>
+
+                {/* Contract preview button */}
+                <Button
+                  size="small"
+                  type="link"
+                  disabled={!contractPreviewUrl}
+                  onClick={async () => {
+                    if (!contractPreviewUrl) return;
+                    try {
+                      const isAbsolute = /^(https?:)?\/\//i.test(contractPreviewUrl);
+                      if (isAbsolute && !contractPreviewUrl.startsWith(window.location.origin)) {
+                        window.open(contractPreviewUrl, '_blank');
+                        return;
+                      }
+                      const response = await fetch(contractPreviewUrl, { method: 'GET' });
+                      if (!response.ok) throw new Error('Không thể tải hợp đồng');
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      window.open(url, '_blank');
+                      setTimeout(() => window.URL.revokeObjectURL(url), 60 * 1000);
+                    } catch (err) {
+                      const msg = err?.response?.data?.message || err?.message || 'Không thể preview hợp đồng';
+                      message.error(msg);
+                    }
+                  }}
+                >
+                  Preview hợp đồng
+                </Button>
+
+                {contractFileName && <span style={{ marginLeft: 8 }}>{contractFileName}</span>}
               </Space>
             </Space>
           </Descriptions.Item>
@@ -419,13 +536,49 @@ const addonOptions = [
             <Space>
               <Button size="small" onClick={handleEnsurePortal}>Sinh link / Gửi</Button>
               <Button size="small" onClick={handleResetPasscode}>Reset passcode</Button>
-              {lead.trackingToken && (
+              {portalLink ? (
+                <a href={portalLink} target="_blank" rel="noreferrer">Mở link</a>
+              ) : lead.trackingToken ? (
                 <a href={`${import.meta.env.VITE_PORTAL_BASE || 'https://portal.adflex.vn/track'}/${lead.trackingToken}`} target="_blank" rel="noreferrer">Mở link</a>
-              )}
+              ) : null}
             </Space>
           </Descriptions.Item>
         </Descriptions>
       </Card>
+
+      <Modal
+        open={paymentModalVisible}
+        title="Thanh toán"
+        onCancel={() => setPaymentModalVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setPaymentModalVisible(false)}>
+            Đóng
+          </Button>,
+          <Button key="copy" icon={<CopyOutlined />} onClick={handleCopyPaymentLink}>
+            Sao chép link
+          </Button>,
+          <Button key="open" type="primary" icon={<LinkOutlined />} onClick={() => paymentInfo?.paymentLink && window.open(paymentInfo.paymentLink, '_blank')}>
+            Mở link
+          </Button>,
+          <Button key="refresh" onClick={handleRefreshPaymentInfo}>Làm mới</Button>,
+        ]}
+      >
+        {paymentLoading ? (
+          <div style={{ textAlign: 'center' }}><Spin /></div>
+        ) : paymentInfo ? (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ marginBottom: 12, fontSize: 16, fontWeight: 'bold' }}>
+              {paymentInfo.totalAmount ? Intl.NumberFormat('vi-VN').format(Number(paymentInfo.totalAmount)) + ' VNĐ' : ''}
+            </div>
+            <img src={paymentInfo.qrCodeUrl} alt="QR" style={{ maxWidth: '100%' }} />
+            <div style={{ marginTop: 8 }}>
+              <a href={paymentInfo.paymentLink} target="_blank" rel="noreferrer">{paymentInfo.paymentLink}</a>
+            </div>
+          </div>
+        ) : (
+          <div>Không có thông tin thanh toán</div>
+        )}
+      </Modal>
 
       <Row gutter={24}>
         <Col span={16}>
@@ -501,48 +654,6 @@ const addonOptions = [
               </Card>
             ))}
           </Card>
-
-          <Card title="Tài liệu (Documents)" bordered={false} style={{ marginTop: 16 }}>
-            <Space style={{ marginBottom: 8 }}>
-              <Upload
-                customRequest={async ({ file, onSuccess, onError }) => {
-                  try {
-                    await handleUploadDocument(file);
-                    onSuccess(null, file);
-                  } catch (e) {
-                    onError(e);
-                  }
-                }}
-                showUploadList={false}
-              >
-                <Button icon={<UploadOutlined />}>Tải tài liệu</Button>
-              </Upload>
-            </Space>
-
-            {docsLoading ? (
-              <Spin />
-            ) : documents.length === 0 ? (
-              <div>Không có tài liệu.</div>
-            ) : (
-              documents.map((d) => (
-                <Card type="inner" key={d.id} style={{ marginBottom: 8 }}>
-                  <Row justify="space-between" align="middle">
-                    <Col>
-                      <div><b>{d.name}</b> {d.type && <Tag>{d.type}</Tag>}</div>
-                      <div style={{ color: '#666', fontSize: 12 }}>{d.uploadedAt}</div>
-                    </Col>
-                    <Col>
-                      <Space>
-                        <Button size="small" onClick={() => handleToggleDocVisibility(d)}>
-                          {d.isPublic ? 'Công khai' : 'Riêng tư'}
-                        </Button>
-                      </Space>
-                    </Col>
-                  </Row>
-                </Card>
-              ))
-            )}
-          </Card>
         </Col>
       </Row>
 
@@ -615,7 +726,33 @@ const addonOptions = [
         <Button
           type="link"
           disabled={!proofPreviewUrl}
-          onClick={() => window.open(proofPreviewUrl, '_blank')}
+          onClick={async () => {
+            if (!proofPreviewUrl) return;
+            try {
+              const isAbsolute = /^(https?:)?\/\//i.test(proofPreviewUrl);
+              // For external absolute URLs on other origins, just open directly
+              if (isAbsolute && !proofPreviewUrl.startsWith(window.location.origin)) {
+                window.open(proofPreviewUrl, '_blank');
+                return;
+              }
+
+              // Otherwise fetch with Authorization header and open blob URL
+              const response = await fetch(proofPreviewUrl, {
+                method: 'GET',
+                headers: { Authorization: `Bearer ${token}` },
+              });
+
+              if (!response.ok) throw new Error('Không thể tải file preview');
+              const blob = await response.blob();
+              const url = window.URL.createObjectURL(blob);
+              window.open(url, '_blank');
+              // Revoke after a short while
+              setTimeout(() => window.URL.revokeObjectURL(url), 60 * 1000);
+            } catch (err) {
+              const msg = err?.response?.data?.message || err?.message || 'Không thể preview file';
+              message.error(msg);
+            }
+          }}
         >
           Preview
         </Button>

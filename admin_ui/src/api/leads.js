@@ -134,6 +134,11 @@ export const confirmOrderPayment = async (orderId) => {
   return res.data;
 };
 
+export const fetchOrderPaymentInfo = async (orderId) => {
+  const res = await api.get(`/api/admin/orders/${orderId}/public-payment`);
+  return res.data;
+};
+
 export const confirmOrderContract = async (orderId) => {
   const res = await api.post(`/api/admin/orders/${orderId}/confirm-contract`);
   return res.data;
@@ -149,3 +154,10 @@ export const uploadContract = async (orderId, file) => {
 };
 
 export const getProofUrl = (docId) => `/api/admin/proofs/${docId}`;
+
+export const getCustomerPortalLink = async (leadId, portalBaseUrl) => {
+  const res = await api.get(`/api/admin/leads/${leadId}/customer-portal/link`, {
+    params: portalBaseUrl ? { portal_base_url: portalBaseUrl } : {},
+  });
+  return res.data;
+};

@@ -2,12 +2,7 @@ package com.adflex.tracking.controller.admin;
 
 import com.adflex.profile.repository.LeadRepository;
 import com.adflex.tracking.entity.Document;
-import com.adflex.tracking.entity.MilestoneConfig;
-import com.adflex.tracking.entity.Order;
 import com.adflex.tracking.repository.DocumentRepository;
-import com.adflex.tracking.repository.MilestoneConfigRepository;
-import com.adflex.tracking.repository.OrderRepository;
-import com.adflex.tracking.enums.PaymentStatus;
 import lombok.Builder;
 import lombok.Data;
 import org.springframework.core.io.FileSystemResource;
@@ -29,7 +24,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -44,19 +38,14 @@ public class AdminProofController {
 
     private final DocumentRepository documentRepository;
     private final LeadRepository leadRepository;
-    private final MilestoneConfigRepository configRepo;
-    private final OrderRepository orderRepository;
 
-    public AdminProofController(DocumentRepository documentRepository, LeadRepository leadRepository,
-                                MilestoneConfigRepository configRepo, OrderRepository orderRepository) {
+    public AdminProofController(DocumentRepository documentRepository, LeadRepository leadRepository) {
         this.documentRepository = documentRepository;
         this.leadRepository = leadRepository;
-        this.configRepo = configRepo;
-        this.orderRepository = orderRepository;
     }
 
     @PostMapping
-    public ResponseEntity<?> upload(
+    public ResponseEntity<ProofResponse> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam("lead_id") String leadId,
             @RequestParam(value = "milestone_code", required = false) String milestoneCode,
@@ -68,17 +57,6 @@ public class AdminProofController {
 
         UUID leadUuid = UUID.fromString(leadId);
         leadRepository.findById(leadUuid).orElseThrow(() -> new RuntimeException("Lead not found"));
-
-        // Prevent proof upload for payment-required milestones when order is not paid
-        if (StringUtils.hasText(milestoneCode)) {
-            MilestoneConfig cfg = configRepo.findByCode(milestoneCode);
-            if (cfg != null && cfg.getPaymentRequired()) {
-                Order ord = orderRepository.findByLeadIdOrderByCreatedAtDesc(leadId).stream().findFirst().orElse(null);
-                if (ord == null || ord.getPaymentStatus() != PaymentStatus.PAID) {
-                    return ResponseEntity.status(403).body(Map.of("message", "Waiting for payment before uploading proof for this step."));
-                }
-            }
-        }
 
         Files.createDirectories(PROOF_UPLOAD_DIR);
 

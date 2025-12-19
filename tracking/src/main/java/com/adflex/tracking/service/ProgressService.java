@@ -181,19 +181,41 @@ if (total != null) {
             created.add(lp);
         }
 
-        // Tạo Addon (nếu có)
+        // Tạo Addon (nếu có). Normalize addon codes and try several candidates to match MilestoneConfig
         for (String addonCode : addonList) {
-            String code = "ADDON_" + addonCode.toUpperCase();
-            MilestoneConfig cfg = configRepo.findByCode(code);
-            if (cfg != null && progressRepo.findByLeadIdAndMilestoneCode(leadId, code) == null) {
+            if (addonCode == null) continue;
+            // Normalize: strip possible leading ADDON_ and uppercase
+            String base = addonCode.toUpperCase().replaceFirst("^ADDON_", "");
+
+            List<String> candidates = new ArrayList<>();
+            candidates.add("ADDON_" + base);           // e.g. ZALO_OA -> ADDON_ZALO_OA, ADDON_TAX_3M -> ADDON_TAX_3M
+            // Common fallbacks
+            if (base.endsWith("_OA")) candidates.add("ADDON_" + base.replaceFirst("_OA$", "")); // ZALO_OA -> ADDON_ZALO
+            if ("WEBSITE".equals(base)) candidates.add("ADDON_WEB"); // WEBSITE -> ADDON_WEB
+            // Also try without prefix in case config used non-prefixed codes (unlikely but safe)
+            candidates.add(base);
+
+            MilestoneConfig cfg = null;
+            String matchedCode = null;
+            for (String candidate : candidates) {
+                cfg = configRepo.findByCode(candidate);
+                if (cfg != null) {
+                    matchedCode = candidate;
+                    break;
+                }
+            }
+
+            if (cfg != null && progressRepo.findByLeadIdAndMilestoneCode(leadId, matchedCode) == null) {
                 LeadProgress lp = LeadProgress.builder()
                         .leadId(leadId)
-                        .milestoneCode(code)
+                        .milestoneCode(matchedCode)
                         .status(MilestoneStatus.IN_PROGRESS)
                         .startedAt(LocalDateTime.now())
                         .build();
                 progressRepo.save(lp);
                 created.add(lp);
+            } else if (cfg == null) {
+                log.warn("No milestone config found for addon code {} (tried: {})", addonCode, candidates);
             }
         }
         // -----------------------------------------------------------------------
@@ -292,24 +314,10 @@ if (total != null) {
                 if (cfg.getType() == MilestoneType.CORE && !canStartCoreStep(leadId, cfg)) {
                     throw new RuntimeException("Không thể START vì step trước chưa COMPLETE.");
                 }
-                // Prevent starting payment-required core steps if order is not paid
-                if (cfg.getType() == MilestoneType.CORE && cfg.getPaymentRequired()) {
-                    Order ord = orderRepository.findByLeadIdOrderByCreatedAtDesc(leadId).stream().findFirst().orElse(null);
-                    if (ord == null || ord.getPaymentStatus() != PaymentStatus.PAID) {
-                        throw new RuntimeException("Waiting for payment before starting this step.");
-                    }
-                }
                 lp.setStatus(MilestoneStatus.IN_PROGRESS);
                 lp.setStartedAt(LocalDateTime.now());
             }
             case "COMPLETE" -> {
-                // Prevent completing payment-required steps if order is not paid
-                if (cfg.getPaymentRequired()) {
-                    Order ord = orderRepository.findByLeadIdOrderByCreatedAtDesc(leadId).stream().findFirst().orElse(null);
-                    if (ord == null || ord.getPaymentStatus() != PaymentStatus.PAID) {
-                        throw new RuntimeException("Waiting for payment before uploading proof for this step.");
-                    }
-                }
                 if (cfg.getRequiredProof() && (proofDocId == null || proofDocId.isBlank())) {
                     throw new RuntimeException("Bước này cần upload proof.");
                 }
@@ -350,19 +358,10 @@ if (total != null) {
         if (nextCfg == null) return;
         LeadProgress nextStep = progressRepo.findByLeadIdAndMilestoneCode(leadId, nextCfg.getCode());
         if (nextStep == null) return;
-        if (nextStep.getStatus() == MilestoneStatus.LOCKED) {
+        if (nextStep.getStatus() == MilestoneStatus.LOCKED || nextStep.getStatus() == MilestoneStatus.WAITING_PAYMENT) {
             nextStep.setStatus(MilestoneStatus.IN_PROGRESS);
             nextStep.setStartedAt(LocalDateTime.now());
             progressRepo.save(nextStep);
-        } else if (nextStep.getStatus() == MilestoneStatus.WAITING_PAYMENT) {
-            // Only unlock waiting payment step when order is paid
-            Order ord = orderRepository.findByLeadIdOrderByCreatedAtDesc(leadId).stream().findFirst().orElse(null);
-            if (ord != null && ord.getPaymentStatus() == PaymentStatus.PAID) {
-                nextStep.setStatus(MilestoneStatus.IN_PROGRESS);
-                nextStep.setStartedAt(LocalDateTime.now());
-                progressRepo.save(nextStep);
-            }
-            // otherwise keep as WAITING_PAYMENT
         }
     }
 
