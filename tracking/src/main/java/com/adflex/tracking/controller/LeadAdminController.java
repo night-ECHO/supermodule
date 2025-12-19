@@ -68,7 +68,7 @@ public class LeadAdminController {
                 .email(lead.getEmail())
                 .mbRefId(lead.getMbRefId())
                 .status(lead.getStatus())
-                .assignedToOrg(lead.getAssignedToOrg())         
+                .assignedToOrg(lead.getAssignedToOrg())
                 .createdAt(lead.getCreatedAt())
                 .packageCode(order != null ? order.getPackageCode() : null)
                 .packageAmount(order != null ? order.getAmount() : null)

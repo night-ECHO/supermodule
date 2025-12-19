@@ -52,10 +52,14 @@ export const confirmPackage = async (leadId, payload) => {
   return res.data;
 };
 
-export const uploadProof = async (file) => {
+export const uploadDocument = async (leadId, file, isPublic) => {
   const form = new FormData();
+  form.append('leadId', leadId);
   form.append('file', file);
-  const res = await api.post('/api/proofs', form, {
+  form.append('isPublic', isPublic); // Gửi thêm cờ Public
+
+
+  const res = await api.post('/api/documents/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return res.data;

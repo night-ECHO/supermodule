@@ -14,10 +14,10 @@ import java.util.Map;
 public class ProgressController {
 
     private final ProgressService progressService;
-   
 
 
-     // Giai đoạn 1 — Khởi tạo STEP_CONSULT cho lead mới
+
+    // Giai đoạn 1 — Khởi tạo STEP_CONSULT cho lead mới
     @PostMapping("/{leadId}/init-progress")
     public ResponseEntity<?> initProgress(
             @PathVariable("leadId") String leadId
@@ -27,8 +27,8 @@ public class ProgressController {
         );
     }
 
-     // Giai đoạn 2 — Xác nhận package hoặc chỉ tạo Addon
-     
+    // Giai đoạn 2 — Xác nhận package hoặc chỉ tạo Addon
+
     @PostMapping("/{leadId}/confirm-package")
     public ResponseEntity<?> confirmPackage(
             @PathVariable("leadId") String leadId,
@@ -55,9 +55,9 @@ public class ProgressController {
             return ResponseEntity.ok(
                     progressService.confirmPackage(
                             leadId,
-                            null,      
+                            null,
                             addons,
-                            false       
+                            false
                     )
             );
         }
@@ -73,9 +73,9 @@ public class ProgressController {
         );
     }
 
-    
-     // Giai đoạn 2 — Update milestone: START / COMPLETE / FAIL
-     
+
+    // Giai đoạn 2 — Update milestone: START / COMPLETE / FAIL
+
     @PostMapping("/{leadId}/progress/{milestoneCode}")
     public ResponseEntity<?> updateProgress(
             @PathVariable("leadId") String leadId,
@@ -95,9 +95,9 @@ public class ProgressController {
         );
     }
 
-    
-     // Giai đoạn 3 — API lấy toàn bộ step đã tạo của lead
-     
+
+    // Giai đoạn 3 — API lấy toàn bộ step đã tạo của lead
+
     @GetMapping("/{leadId}/progress")
     public ResponseEntity<?> getLeadProgress(
             @PathVariable("leadId") String leadId

@@ -42,20 +42,35 @@ public class JwtUtil {
                 .getBody();
     }
 
-public String generateToken(UserDetails userDetails, boolean isTemp) {
-    Map<String, Object> claims = new HashMap<>();
-    claims.put("isTemp", isTemp);
+    // ==========================================
+    // 1. DÀNH CHO ADMIN / USER (Logic cũ của bạn)
+    // ==========================================
+    public String generateToken(UserDetails userDetails, boolean isTemp) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("isTemp", isTemp);
 
-    // ADD THIS LINE — extract role from authorities
-    String role = userDetails.getAuthorities().stream()
-            .findFirst()
-            .map(Object::toString)
-            .orElse("ASSOCIATE");
+        String role = userDetails.getAuthorities().stream()
+                .findFirst()
+                .map(Object::toString)
+                .orElse("ASSOCIATE");
 
-    claims.put("role", role);   // ← THIS IS THE MISSING LINE
+        claims.put("role", role);
 
-    return createToken(claims, userDetails.getUsername());
-}
+        return createToken(claims, userDetails.getUsername());
+    }
+
+    // ==========================================
+    // 2. DÀNH CHO KHÁCH HÀNG (Mới thêm vào)
+    // ==========================================
+    // Hàm này nhận String trực tiếp, không cần UserDetails
+    public String generateToken(String username, String role) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("role", role);
+        claims.put("isTemp", false); // Khách hàng mặc định ko phải pass tạm
+        return createToken(claims, username);
+    }
+
+    // ==========================================
 
     private String createToken(Map<String, Object> claims, String subject) {
         return Jwts.builder()

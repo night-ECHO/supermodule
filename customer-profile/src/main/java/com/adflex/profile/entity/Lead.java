@@ -1,8 +1,5 @@
 package com.adflex.profile.entity;
 
-
-
-
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -16,6 +13,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.Random; // Import thêm Random
 
 @Entity
 @Table(name = "leads", uniqueConstraints = @UniqueConstraint(columnNames = "phone"))
@@ -48,9 +46,11 @@ public class Lead {
     @Column(name = "business_name_options", columnDefinition = "jsonb")
     private List<String> businessNameOptions;
 
-
     @Column(name = "business_address")
     private String businessAddress;
+
+    @Column(name = "tax_code")
+    private String taxCode;
 
     @Column(name = "charter_capital")
     private Long charterCapital;
@@ -75,4 +75,26 @@ public class Lead {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private Instant updatedAt;
+
+    @Column(name = "tracking_token")
+    private String trackingToken;
+
+    @Column(name = "access_code")
+    private String accessCode;
+
+
+    @PrePersist
+    public void generateAutoInfo() {
+        // 1. Tự sinh Link Token nếu chưa có
+        if (this.trackingToken == null || this.trackingToken.isEmpty()) {
+            this.trackingToken = UUID.randomUUID().toString();
+        }
+
+        // 2. Tự sinh Passcode 6 số ngẫu nhiên nếu chưa có
+        if (this.accessCode == null || this.accessCode.isEmpty()) {
+            // Random từ 100000 đến 999999
+            int randomCode = 100000 + new Random().nextInt(900000);
+            this.accessCode = String.valueOf(randomCode);
+        }
+    }
 }

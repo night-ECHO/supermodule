@@ -6,6 +6,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -14,6 +15,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 @Configuration
 public class SecurityConfig {
@@ -48,29 +54,51 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            // No CSRF ignore for H2
-            .csrf(csrf -> csrf.disable())  // Disable CSRF entirely (common for API-only with JWT)
+                // 1. Kích hoạt CORS (Quan trọng cho Frontend gọi API)
+                .cors(Customizer.withDefaults())
 
-            // No frame options disable
+                // 2. Tắt CSRF (Chuẩn cho API Stateless)
+                .csrf(csrf -> csrf.disable())
 
-            // Authorization rules (removed H2)
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/error", "/favicon.ico").permitAll()
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
-                .requestMatchers("/api/webhooks/**").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/webhooks/google-form").permitAll()
-                .anyRequest().authenticated()
-            )
+                // 3. Cấu hình quyền truy cập (AUTHORIZATION)
+                .authorizeHttpRequests(auth -> auth
+                        // 👇 QUAN TRỌNG: Mở khóa API Portal cho khách hàng xem tiến độ
+                        .requestMatchers("/api/portal/**").permitAll()
 
-            // Stateless + JWT
-            .sessionManagement(session -> session
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            )
+                        // Các API public khác
+                        .requestMatchers("/error", "/favicon.ico").permitAll()
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/webhooks/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/webhooks/google-form").permitAll()
 
-            .authenticationProvider(authenticationProvider())
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                        // API Admin yêu cầu quyền ADMIN
+                        .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
+
+                        // Tất cả request còn lại phải đăng nhập
+                        .anyRequest().authenticated()
+                )
+
+                // 4. Quản lý session (Stateless vì dùng JWT)
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+
+                .authenticationProvider(authenticationProvider())
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    // 👇 Bean cấu hình CORS để Frontend (localhost:3000/5173) gọi được Backend
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(List.of("*")); // Cho phép tất cả nguồn (Dev mode)
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 }

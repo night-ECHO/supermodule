@@ -8,28 +8,20 @@
         <groupId>com.adflex</groupId>
         <artifactId>customer-platform</artifactId>
         <version>1.0.0</version>
+        <relativePath>../pom.xml</relativePath>
     </parent>
 
     <artifactId>tracking</artifactId>
-
     <dependencies>
         <dependency>
             <groupId>com.adflex</groupId>
             <artifactId>customer-profile</artifactId>
-            <version>1.0.0</version>
         </dependency>
+
         <dependency>
             <groupId>com.example</groupId>
             <artifactId>user-portal</artifactId>
-            <version>1.0.0</version>
         </dependency>
-
-        <dependency>
-            <groupId>com.noti</groupId>
-            <artifactId>notification</artifactId>
-            <version>1.0.0</version>
-        </dependency>
-
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -59,15 +51,18 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <excludes>
-                        <exclude>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                    <annotationProcessorPaths>
+                        <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
-                        </exclude>
-                    </excludes>
+                            <version>1.18.30</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
         </plugins>
