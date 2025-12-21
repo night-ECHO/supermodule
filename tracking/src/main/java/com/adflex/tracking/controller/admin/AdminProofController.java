@@ -58,37 +58,25 @@ public class AdminProofController {
         UUID leadUuid = UUID.fromString(leadId);
         leadRepository.findById(leadUuid).orElseThrow(() -> new RuntimeException("Lead not found"));
 
-        Files.createDirectories(PROOF_UPLOAD_DIR);
-
-        UUID docId = UUID.randomUUID();
-        String ext = StringUtils.getFilenameExtension(file.getOriginalFilename());
-        String storedName = (ext != null && !ext.isBlank()) ? docId + "." + ext : docId.toString();
-        Path target = PROOF_UPLOAD_DIR.resolve(storedName);
-        Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
-
-        String originalName = StringUtils.hasText(file.getOriginalFilename()) ? file.getOriginalFilename() : storedName;
-        Document doc = Document.builder()
-                .id(docId)
-                .leadId(leadUuid)
-                .name(originalName)
-                .type("PROOF")
-                .milestoneCode(StringUtils.hasText(milestoneCode) ? milestoneCode : null)
-                .storageKey(target.toString())
-                .isPublic(isPublic)
-                .uploadedAt(Instant.now())
-                .build();
-        documentRepository.save(doc);
-
-        ProofResponse res = ProofResponse.builder()
-                .id(docId.toString())
-                .fileName(originalName)
-                .storedName(storedName)
-                .size(file.getSize())
-                .uploadedAt(doc.getUploadedAt().toString())
-                .isPublic(Boolean.TRUE.equals(doc.getIsPublic()))
-                .fileLink("/api/admin/proofs/" + docId)
-                .build();
+        ProofResponse res = saveProof(file, leadUuid, milestoneCode, isPublic);
         return ResponseEntity.ok(res);
+    }
+
+    @GetMapping
+    public ResponseEntity<?> list(
+            @RequestParam("lead_id") String leadId,
+            @RequestParam(value = "milestone_code", required = false) String milestoneCode
+    ) {
+        UUID leadUuid = UUID.fromString(leadId);
+        leadRepository.findById(leadUuid).orElseThrow(() -> new RuntimeException("Lead not found"));
+
+        var docs = milestoneCode != null && !milestoneCode.isBlank()
+                ? documentRepository.findByLeadIdAndMilestoneCodeOrderByUploadedAtDesc(leadUuid, milestoneCode)
+                : documentRepository.findByLeadIdOrderByUploadedAtDesc(leadUuid);
+
+        return ResponseEntity.ok(
+                docs.stream().map(this::toResponse).toList()
+        );
     }
 
     @GetMapping("/{docId}")
@@ -114,11 +102,61 @@ public class AdminProofController {
     public static class ProofResponse {
         private String id;
         private String fileName;
+        private String milestoneCode;
         private String storedName;
         private String fileLink;
         private Long size;
         private String uploadedAt;
         private Boolean isPublic;
     }
-}
 
+    private ProofResponse saveProof(MultipartFile file, UUID leadUuid, String milestoneCode, boolean isPublic) throws IOException {
+        Files.createDirectories(PROOF_UPLOAD_DIR);
+
+        UUID docId = UUID.randomUUID();
+        String ext = StringUtils.getFilenameExtension(file.getOriginalFilename());
+        String storedName = (ext != null && !ext.isBlank()) ? docId + "." + ext : docId.toString();
+        Path target = PROOF_UPLOAD_DIR.resolve(storedName);
+        // filename là UUID nên không va chạm; REPLACE_EXISTING chỉ phòng trường hợp cùng tên ngẫu nhiên trùng
+        Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+
+        String originalName = StringUtils.hasText(file.getOriginalFilename()) ? file.getOriginalFilename() : storedName;
+        Document doc = Document.builder()
+                .id(docId)
+                .leadId(leadUuid)
+                .name(originalName)
+                .type("PROOF")
+                .milestoneCode(StringUtils.hasText(milestoneCode) ? milestoneCode : null)
+                .storageKey(target.toString())
+                .isPublic(isPublic)
+                .uploadedAt(Instant.now())
+                .build();
+        documentRepository.save(doc);
+
+        return toResponse(doc, storedName, file.getSize());
+    }
+
+    private ProofResponse toResponse(Document doc) {
+        String storedName = Path.of(doc.getStorageKey()).getFileName().toString();
+        long size = 0L;
+        try {
+            size = Files.size(Path.of(doc.getStorageKey()));
+        } catch (IOException ignored) {
+            // nếu không đọc được size, giữ 0
+        }
+        return toResponse(doc, storedName, size);
+    }
+
+    private ProofResponse toResponse(Document doc, String storedName, long size) {
+        return ProofResponse.builder()
+                .id(doc.getId().toString())
+                .fileName(doc.getName())
+                .milestoneCode(doc.getMilestoneCode())
+                .storedName(storedName)
+                .size(size)
+                .uploadedAt(doc.getUploadedAt().toString())
+                .isPublic(Boolean.TRUE.equals(doc.getIsPublic()))
+                .fileLink("/api/admin/proofs/" + doc.getId())
+                .build();
+    }
+}

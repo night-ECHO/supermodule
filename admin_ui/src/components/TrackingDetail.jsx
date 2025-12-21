@@ -49,6 +49,7 @@ import {
   fetchOrderPaymentInfo,
   confirmOrderContract,
   uploadContract,
+  updateLeadInfo,
 } from '../api/leads';
 import { useCurrentUser } from '../hooks/useCurrentUser'; // Điều chỉnh đường dẫn nếu cần
 import { useAuth } from '../context/AuthContext';
@@ -70,6 +71,7 @@ const TrackingDetail = () => {
   const [proofFileName, setProofFileName] = useState('');
   const [proofPreviewUrl, setProofPreviewUrl] = useState('');
   const [proofIsPublic, setProofIsPublic] = useState(false);
+  const [proofList, setProofList] = useState([]);
   const [packageModalOpen, setPackageModalOpen] = useState(false);
   const [packageForm] = Form.useForm();
 
@@ -83,6 +85,9 @@ const TrackingDetail = () => {
   const [contractPreviewUrl, setContractPreviewUrl] = useState('');
   const [contractFileName, setContractFileName] = useState('');
   const [contractConfirmed, setContractConfirmed] = useState(false);
+  const [editLeadModalOpen, setEditLeadModalOpen] = useState(false);
+  const [editLeadSaving, setEditLeadSaving] = useState(false);
+  const [editLeadForm] = Form.useForm();
 
   // Payment QR modal
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
@@ -213,9 +218,17 @@ const addonOptions = [
     }
     setSelectedStep(step);
     setNote(step.note || '');
-    setProofDocId(step.proofDocId || '');
-    setProofPreviewUrl(step.fileLink || (step.proofDocId ? `/api/admin/proofs/${step.proofDocId}` : ''));
-    setProofFileName('');
+    const proofs = Array.isArray(step.proofs) ? step.proofs : [];
+    setProofList(proofs);
+    const previewProof =
+      proofs.find((p) => p.id === step.proofDocId) || proofs[0] || null;
+    setProofDocId(previewProof?.id || step.proofDocId || '');
+    setProofPreviewUrl(
+      previewProof?.fileLink ||
+        step.fileLink ||
+        (step.proofDocId ? `/api/admin/proofs/${step.proofDocId}` : ''),
+    );
+    setProofFileName(previewProof?.name || '');
     setProofIsPublic(false);
     setModalVisible(true);
   };
@@ -430,6 +443,50 @@ const addonOptions = [
     }
   };
 
+  const openEditLeadModal = () => {
+    editLeadForm.setFieldsValue({
+      fullName: lead?.fullName,
+      email: lead?.email,
+      mbRefId: lead?.mbRefId,
+      businessAddress: lead?.businessAddress,
+      businessNameOptions: lead?.businessNameOptions?.join(', ') || '',
+      charterCapital: lead?.charterCapital,
+      industryNeeds: lead?.industryNeeds,
+    });
+    setEditLeadModalOpen(true);
+  };
+
+  const handleSaveLeadInfo = async () => {
+    try {
+      const values = await editLeadForm.validateFields();
+      setEditLeadSaving(true);
+      const payload = {
+        fullName: values.fullName,
+        email: values.email || null,
+        mbRefId: values.mbRefId || null,
+        businessAddress: values.businessAddress || null,
+        businessNameOptions: values.businessNameOptions
+          ? values.businessNameOptions.split(',').map((s) => s.trim()).filter(Boolean)
+          : [],
+        charterCapital:
+          values.charterCapital === undefined || values.charterCapital === null || values.charterCapital === ''
+            ? null
+            : Number(values.charterCapital),
+        industryNeeds: values.industryNeeds || null,
+      };
+      const updated = await updateLeadInfo(id, payload);
+      setLead(updated);
+      message.success('Đã cập nhật thông tin hồ sơ');
+      setEditLeadModalOpen(false);
+    } catch (err) {
+      if (err?.errorFields) return; // form validation
+      const msg = err?.response?.data?.message || err?.message || 'Không cập nhật được thông tin';
+      message.error(msg);
+    } finally {
+      setEditLeadSaving(false);
+    }
+  };
+
   const handleUploadContract = async (file) => {
     if (!lead?.orderId) return message.error('Không tìm thấy đơn hàng');
     try {
@@ -479,7 +536,16 @@ const addonOptions = [
         Quay lại
       </Button>
 
-      <Card title="Thông tin Hồ Sơ" bordered={false} style={{ marginBottom: 24 }}>
+      <Card
+        title="Thông tin Hồ Sơ"
+        bordered={false}
+        style={{ marginBottom: 24 }}
+        extra={
+          <Button size="small" type="link" onClick={openEditLeadModal}>
+            Sửa thông tin
+          </Button>
+        }
+      >
         <Descriptions column={2}>
           <Descriptions.Item label="Khách hàng">
             <b>{lead.fullName}</b>
@@ -862,6 +928,18 @@ const addonOptions = [
               setProofDocId(res.id);
               setProofFileName(res.fileName || file.name || '');
               setProofPreviewUrl(res.fileLink || `/api/admin/proofs/${res.id}`);
+              setProofList((prev) => [
+                {
+                  id: res.id,
+                  name: res.fileName || file.name || '',
+                  milestoneCode: selectedStep?.milestoneCode,
+                  fileLink: res.fileLink || `/api/admin/proofs/${res.id}`,
+                  isPublic: res.isPublic ?? proofIsPublic,
+                  size: res.size,
+                  uploadedAt: res.uploadedAt,
+                },
+                ...prev,
+              ]);
 
               onSuccess(res, file);
               message.success(`Đã tải lên: ${file.name}`);
@@ -949,9 +1027,16 @@ const addonOptions = [
       </Space>
 
       {/* Tên file */}
-      {proofFileName && (
+      {proofList?.length > 0 && (
         <div style={{ marginTop: 6, color: '#555' }}>
-          File đã upload: <b>{proofFileName}</b>
+          File đã upload:
+          <div style={{ marginTop: 4, lineHeight: 1.6 }}>
+            {proofList.map((p) => (
+              <div key={p.id}>
+                <b>{p.name}</b>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -997,6 +1082,38 @@ const addonOptions = [
                 ))}
               </Row>
             </Checkbox.Group>
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        title="Sửa thông tin hồ sơ"
+        open={editLeadModalOpen}
+        onCancel={() => setEditLeadModalOpen(false)}
+        onOk={handleSaveLeadInfo}
+        confirmLoading={editLeadSaving}
+        okText="Lưu"
+      >
+        <Form layout="vertical" form={editLeadForm} colon={false}>
+          <Form.Item label="Họ tên" name="fullName" rules={[{ required: true, message: 'Nhập họ tên' }]}>
+            <Input placeholder="Nhập họ tên" />
+          </Form.Item>
+          <Form.Item label="Email" name="email" rules={[{ type: 'email', message: 'Email không hợp lệ' }]}>
+            <Input placeholder="example@domain.com" />
+          </Form.Item>
+          <Form.Item label="MB Ref ID" name="mbRefId">
+            <Input placeholder="MB Ref ID" />
+          </Form.Item>
+          <Form.Item label="Địa chỉ doanh nghiệp" name="businessAddress">
+            <Input placeholder="Địa chỉ" />
+          </Form.Item>
+          <Form.Item label="Tên doanh nghiệp (comma-separated)" name="businessNameOptions">
+            <Input placeholder="Ví dụ: Tên 1, Tên 2" />
+          </Form.Item>
+          <Form.Item label="Vốn điều lệ" name="charterCapital">
+            <Input type="number" placeholder="Số tiền" />
+          </Form.Item>
+          <Form.Item label="Nhu cầu / Ngành nghề" name="industryNeeds">
+            <Input.TextArea rows={3} placeholder="Mô tả nhu cầu" />
           </Form.Item>
         </Form>
       </Modal>

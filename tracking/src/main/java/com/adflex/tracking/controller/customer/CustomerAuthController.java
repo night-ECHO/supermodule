@@ -4,6 +4,7 @@ import com.adflex.profile.entity.Lead;
 import com.adflex.profile.repository.LeadRepository;
 import com.adflex.tracking.dto.customer.CustomerAuthRequest;
 import com.adflex.tracking.dto.customer.CustomerAuthResponse;
+import com.adflex.tracking.config.DateTimeConstants;
 import com.adflex.tracking.service.CustomerRateLimitService;
 import com.adflex.tracking.security.CustomerJwtUtil;
 import org.springframework.http.HttpStatus;
@@ -16,6 +17,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.UUID;
 
@@ -27,6 +31,10 @@ public class CustomerAuthController {
     private final PasswordEncoder passwordEncoder;
     private final CustomerRateLimitService rateLimitService;
     private final CustomerJwtUtil customerJwtUtil;
+
+    private static final DateTimeFormatter LOCK_TIME_FORMATTER = DateTimeFormatter
+            .ofPattern(DateTimeConstants.DATE_TIME_PATTERN)
+            .withZone(ZoneId.of(DateTimeConstants.TIMEZONE));
 
     public CustomerAuthController(
             LeadRepository leadRepository,
@@ -64,7 +72,7 @@ public class CustomerAuthController {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                     .body(Map.of(
                             "message", "Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau",
-                            "locked_until", locked.lockedUntil() != null ? locked.lockedUntil().toString() : null
+                            "locked_until", formatInstant(locked.lockedUntil())
                     ));
         }
 
@@ -82,7 +90,7 @@ public class CustomerAuthController {
                 return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                         .body(Map.of(
                                 "message", "Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau",
-                                "locked_until", decision.lockedUntil() != null ? decision.lockedUntil().toString() : null
+                                "locked_until", formatInstant(decision.lockedUntil())
                         ));
             }
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Sai passcode"));
@@ -102,5 +110,12 @@ public class CustomerAuthController {
             return xff.split(",")[0].trim();
         }
         return request.getRemoteAddr() != null ? request.getRemoteAddr() : "unknown";
+    }
+
+    private static String formatInstant(Instant instant) {
+        if (instant == null) {
+            return null;
+        }
+        return LOCK_TIME_FORMATTER.format(instant);
     }
 }

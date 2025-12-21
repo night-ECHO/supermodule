@@ -1,7 +1,8 @@
 package com.adflex.tracking.entity;
 
-
+import com.adflex.tracking.config.DateTimeConstants;
 import com.adflex.tracking.enums.MilestoneType;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -40,7 +41,9 @@ public class MilestoneConfig {
     @Column(name = "payment_required")
     private Boolean paymentRequired;
 
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
     private LocalDateTime createdAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
     private LocalDateTime updatedAt;
 
     @PrePersist

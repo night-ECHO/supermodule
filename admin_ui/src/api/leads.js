@@ -37,6 +37,11 @@ export const fetchProgress = async (leadId) => {
   return res.data;
 };
 
+export const updateLeadInfo = async (leadId, payload) => {
+  const res = await api.patch(`/api/leads/${leadId}`, payload);
+  return res.data;
+};
+
 export const updateProgress = async (leadId, milestoneCode, data) => {
   const res = await api.post(`/api/leads/${leadId}/progress/${milestoneCode}`, data);
   return res.data;

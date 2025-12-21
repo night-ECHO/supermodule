@@ -2,6 +2,8 @@ package com.adflex.tracking.dto;
 
 import com.adflex.profile.entity.LeadStatus;
 import com.adflex.tracking.enums.PaymentStatus;
+import com.adflex.tracking.config.DateTimeConstants;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Builder;
 import lombok.Data;
 
@@ -19,7 +21,9 @@ public class LeadDetailResponse {
     private String mbRefId;
     private LeadStatus status;
     private String assignedToOrg;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
     private Instant createdAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
     private Instant updatedAt;
     private Boolean isDuplicate;
 

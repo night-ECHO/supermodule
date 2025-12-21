@@ -88,6 +88,11 @@ const CustomerPortalPage = () => {
     return map;
   }, [documents]);
 
+  const fileCount = (stepCode) => {
+    const arr = docsByMilestone.get(stepCode) || [];
+    return arr.length;
+  };
+
   const handleLogin = async () => {
     const values = await form.validateFields();
     setLoading(true);
@@ -247,7 +252,14 @@ const CustomerPortalPage = () => {
                 <Card
                   type="inner"
                   title={step.name || step.code}
-                  extra={<a onClick={() => setSelectedStep(step)}>Chi tiết</a>}
+                  extra={
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: '#888' }}>
+                        {fileCount(step.code) > 0 ? `${fileCount(step.code)} file` : '0 file'}
+                      </span>
+                      <a onClick={() => setSelectedStep(step)}>Chi tiết</a>
+                    </div>
+                  }
                   style={{
                     borderLeft: `5px solid ${step.status === 'COMPLETED' ? '#52c41a' : step.status === 'IN_PROGRESS' ? '#faad14' : '#d9d9d9'}`,
                     background:

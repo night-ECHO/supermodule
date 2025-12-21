@@ -13,4 +13,8 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
     List<Document> findByLeadIdOrderByUploadedAtDesc(UUID leadId);
 
     Optional<Document> findByIdAndLeadId(UUID id, UUID leadId);
+
+    List<Document> findByLeadIdAndMilestoneCodeOrderByUploadedAtDesc(UUID leadId, String milestoneCode);
+
+    Optional<Document> findFirstByLeadIdAndMilestoneCodeOrderByUploadedAtDesc(UUID leadId, String milestoneCode);
 }

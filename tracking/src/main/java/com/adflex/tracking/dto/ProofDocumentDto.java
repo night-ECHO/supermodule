@@ -1,4 +1,4 @@
-package com.adflex.tracking.dto.customer;
+package com.adflex.tracking.dto;
 
 import com.adflex.tracking.config.DateTimeConstants;
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -9,12 +9,13 @@ import java.time.Instant;
 
 @Data
 @Builder
-public class CustomerTimelineItemDto {
-    private String code;
+public class ProofDocumentDto {
+    private String id;
     private String name;
-    private String milestoneType;
-    private String status;
+    private String milestoneCode;
+    private String fileLink;
+    private boolean isPublic;
+    private Long size;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
-    private Instant date;
-    private String note;
+    private Instant uploadedAt;
 }

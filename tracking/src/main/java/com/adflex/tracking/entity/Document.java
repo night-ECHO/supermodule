@@ -1,5 +1,7 @@
 package com.adflex.tracking.entity;
 
+import com.adflex.tracking.config.DateTimeConstants;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -50,6 +52,7 @@ public class Document {
     private Boolean isPublic = Boolean.FALSE;
 
     @Column(name = "uploaded_at", nullable = false)
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
     private Instant uploadedAt;
 
     @PrePersist

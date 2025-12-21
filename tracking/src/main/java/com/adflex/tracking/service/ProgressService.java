@@ -6,6 +6,7 @@ import com.adflex.profile.event.PaymentWaitingEvent;
 import com.adflex.profile.repository.LeadRepository;
 
 import com.adflex.tracking.dto.LeadMilestoneDto;
+import com.adflex.tracking.dto.ProofDocumentDto;
 import com.adflex.tracking.entity.LeadProgress;
 import com.adflex.tracking.entity.MilestoneConfig;
 import com.adflex.tracking.entity.Order;
@@ -15,6 +16,7 @@ import com.adflex.tracking.repository.LeadProgressRepository;
 import com.adflex.tracking.repository.MilestoneConfigRepository;
 import com.adflex.tracking.repository.OrderRepository;
 import com.adflex.tracking.repository.PackageRepository;
+import com.adflex.tracking.repository.DocumentRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;                           
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +43,7 @@ public class ProgressService {
     private final ApplicationEventPublisher eventPublisher;
     private final PackageRepository packageRepository;
     private final OrderRepository orderRepository; // vẫn giữ (duplicate nhưng không ảnh hưởng)
+    private final DocumentRepository documentRepository;
 
     // --- 1. HÀM TẠO LEAD (Trigger tự động từ Event) ---
     @Transactional
@@ -318,16 +321,24 @@ if (total != null) {
                 lp.setStartedAt(LocalDateTime.now());
             }
             case "COMPLETE" -> {
-                if (cfg.getRequiredProof() && (proofDocId == null || proofDocId.isBlank())) {
+                String docIdToUse = proofDocId;
+                if ((docIdToUse == null || docIdToUse.isBlank())
+                        && milestoneCode != null && !milestoneCode.isBlank()) {
+                    docIdToUse = documentRepository
+                            .findFirstByLeadIdAndMilestoneCodeOrderByUploadedAtDesc(UUID.fromString(leadId), milestoneCode)
+                            .map(d -> d.getId().toString())
+                            .orElse(null);
+                }
+                if (cfg.getRequiredProof() && (docIdToUse == null || docIdToUse.isBlank())) {
                     throw new RuntimeException("Bước này cần upload proof.");
                 }
                 lp.setStatus(MilestoneStatus.COMPLETED);
                 lp.setCompletedAt(LocalDateTime.now());
-                lp.setProofDocId(proofDocId);
-                if (proofDocId != null && !proofDocId.isBlank()) {
+                if (docIdToUse != null && !docIdToUse.isBlank()) {
+                    lp.setProofDocId(docIdToUse);
                     String link = (proofFileLink != null && !proofFileLink.isBlank())
                             ? proofFileLink
-                            : "/api/admin/proofs/" + proofDocId;
+                            : "/api/admin/proofs/" + docIdToUse;
                     lp.setFileLink(link);
                 }
                 lp.setNote(note);
@@ -368,6 +379,24 @@ if (total != null) {
     public List<LeadMilestoneDto> getLeadMilestones(String leadId) {
         var configs = configRepo.findAll();
         var configMap = configs.stream().collect(Collectors.toMap(MilestoneConfig::getCode, c -> c));
+
+        // Preload documents by milestone to show multiple proofs
+        Map<String, List<ProofDocumentDto>> proofsByMilestone = documentRepository
+                .findByLeadIdOrderByUploadedAtDesc(UUID.fromString(leadId)).stream()
+                .filter(d -> d.getMilestoneCode() != null)
+                .collect(Collectors.groupingBy(
+                        d -> d.getMilestoneCode(),
+                        Collectors.mapping(d -> ProofDocumentDto.builder()
+                                .id(d.getId().toString())
+                                .name(d.getName())
+                                .milestoneCode(d.getMilestoneCode())
+                                .fileLink("/api/admin/proofs/" + d.getId())
+                                .isPublic(Boolean.TRUE.equals(d.getIsPublic()))
+                                .size(getFileSizeSafe(d.getStorageKey()))
+                                .uploadedAt(d.getUploadedAt())
+                                .build(), Collectors.toList())
+                ));
+
         return progressRepo.findByLeadIdOrderByCreatedAtAsc(leadId).stream()
                 .map(lp -> {
                     MilestoneConfig cfg = configMap.get(lp.getMilestoneCode());
@@ -387,8 +416,18 @@ if (total != null) {
                             .proofDocId(lp.getProofDocId())
                             .fileLink(lp.getFileLink())
                             .note(lp.getNote())
+                            .proofs(proofsByMilestone.getOrDefault(lp.getMilestoneCode(), Collections.emptyList()))
                             .build();
                 })
                 .toList();
+    }
+
+    private long getFileSizeSafe(String storageKey) {
+        if (storageKey == null) return 0L;
+        try {
+            return java.nio.file.Files.size(java.nio.file.Path.of(storageKey));
+        } catch (Exception e) {
+            return 0L;
+        }
     }
 }

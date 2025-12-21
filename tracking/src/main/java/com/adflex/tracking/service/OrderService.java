@@ -217,22 +217,7 @@ public class OrderService {
                     ? String.join(", ", order.getAddons())
                     : "Không";
 
-            String message = """
-                    🎉 LEAD HOÀN THÀNH THANH TOÁN & HỢP ĐỒNG
-                    Mã lead: %s
-                    Khách: %s - %s
-                    Gói: %s
-                    Addons: %s
-                    Tổng tiền: %,d VNĐ
-                    ➜ Mở khóa Module 4: Đăng ký kinh doanh
-                    """.formatted(
-                    leadId,
-                    fullName,
-                    phone,
-                    packageCode,
-                    addonsStr,
-                    order.getTotalAmount() != null ? order.getTotalAmount().longValue() : 0);
-            telegramNotifier.sendMessage(message);
+            telegramNotifier.sendMessage("🎉 LEAD HOÀN THÀNH THANH TOÁN");
 
             // TODO: Nếu cần publish event LeadReadyEvent hoặc custom BothConfirmedEvent
 

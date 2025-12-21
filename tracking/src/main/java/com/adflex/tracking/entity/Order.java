@@ -2,6 +2,8 @@ package com.adflex.tracking.entity;
 
 import com.adflex.tracking.enums.ContractStatus;
 import com.adflex.tracking.enums.PaymentStatus;
+import com.adflex.tracking.config.DateTimeConstants;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -61,15 +63,19 @@ public class Order {
 
     // Manual confirmation by AdFlex Ops
     @Column(name = "payment_confirmed_at")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
     private Instant paymentConfirmedAt;
 
     @Column(name = "payment_confirmed_by", columnDefinition = "uuid")
     private UUID paymentConfirmedBy;
 
     // Old fields (kept for compatibility)
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
     private LocalDateTime paidAt;
 
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
     private LocalDateTime createdAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
     private LocalDateTime updatedAt;
 
     @PrePersist
