@@ -11,13 +11,17 @@ import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
-public class PublicPaymentController {  // Không có @PreAuthorize, không có /admin
+public class PublicPaymentController {  
 
     private final OrderService orderService;
 
-    @GetMapping("/pay/{token}")  // Path sạch, công khai
+    @GetMapping("/pay/{token}")  
     public ResponseEntity<Map<String, Object>> getPublicPaymentInfo(@PathVariable UUID token) {
         Order order = orderService.getPublicOrderByToken(token);
         return ResponseEntity.ok(orderService.generatePublicPaymentInfo(order));
+    }
+        @GetMapping("/api/orders/{orderId}/public-payment")
+    public ResponseEntity<Map<String, Object>> getOrderPublicPaymentInfo(@PathVariable String orderId) {
+        return ResponseEntity.ok(orderService.getPublicPaymentInfoByOrderId(orderId));
     }
 }
