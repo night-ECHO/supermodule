@@ -23,7 +23,7 @@
 //     private final TelegramNotifierService telegram;
 
     
-//     @Scheduled(fixedRate = 30000)
+//     @Scheduled(fixedRate = 500000)
 //     public void scan() {
 
 //         var items = progressRepo.findByStatus(MilestoneStatus.IN_PROGRESS);

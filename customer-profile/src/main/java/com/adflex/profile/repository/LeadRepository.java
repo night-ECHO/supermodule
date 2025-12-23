@@ -9,6 +9,8 @@ import java.util.UUID;
 public interface LeadRepository extends JpaRepository<Lead, UUID> {
     Optional<Lead> findByPhone(String phone);
 
+    Optional<Lead> findByTrackingToken(UUID trackingToken);
+
     // Dùng cho trang admin: tìm kiếm theo tên hoặc số điện thoại
     java.util.List<Lead> findByFullNameContainingIgnoreCaseOrPhoneContainingIgnoreCaseOrderByCreatedAtDesc(
             String fullName,

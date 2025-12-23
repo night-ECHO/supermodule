@@ -1,6 +1,8 @@
 package com.adflex.tracking.entity;
 
 import com.adflex.tracking.enums.MilestoneStatus;
+import com.adflex.tracking.config.DateTimeConstants;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -30,7 +32,9 @@ public class LeadProgress {
     @Column(nullable = false)
     private MilestoneStatus status;
 
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
     private LocalDateTime startedAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
     private LocalDateTime completedAt;
 
     private String proofDocId;
@@ -41,7 +45,9 @@ public class LeadProgress {
     @Column(columnDefinition = "TEXT")
     private String note;
 
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
     private LocalDateTime createdAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_PATTERN, timezone = DateTimeConstants.TIMEZONE)
     private LocalDateTime updatedAt;
 
     @PrePersist

@@ -7,7 +7,9 @@ import TrackingDetail from './components/TrackingDetail';
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import AdminUsersPage from './pages/AdminUsersPage';
+import AdminNotificationsPage from './pages/AdminNotificationsPage';
 import { useCurrentUser } from './hooks/useCurrentUser';
+import CustomerPortalPage from './pages/CustomerPortalPage';
 
 function ProtectedRoutes() {
   const { isLoggedIn, requirePasswordChange } = useAuth();
@@ -34,6 +36,7 @@ function ProtectedRoutes() {
         <Route index element={<LeadList />} />
         <Route path="tracking/:id" element={<TrackingDetail />} />
         <Route path="admin/users" element={<AdminUsersPage />} />
+        <Route path="admin/notifications" element={<AdminNotificationsPage />} />
         <Route path="*" element={<Navigate to={defaultPath} replace />} />
       </Route>
       <Route path="*" element={<Navigate to={defaultPath} replace />} />
@@ -44,12 +47,20 @@ function ProtectedRoutes() {
 function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="*" element={<ProtectedRoutes />} />
-        </Routes>
-      </AuthProvider>
+      <Routes>
+        <Route path="/track/:token" element={<CustomerPortalPage />} />
+        <Route
+          path="/*"
+          element={
+            <AuthProvider>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="*" element={<ProtectedRoutes />} />
+              </Routes>
+            </AuthProvider>
+          }
+        />
+      </Routes>
     </BrowserRouter>
   );
 }

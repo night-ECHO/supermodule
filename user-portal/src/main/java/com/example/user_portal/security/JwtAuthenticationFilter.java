@@ -8,6 +8,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -33,7 +34,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = authHeader.substring(7);
             String username = jwtUtil.extractUsername(token);
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                UserDetails userDetails;
+                try {
+                    userDetails = userDetailsService.loadUserByUsername(username);
+                } catch (UsernameNotFoundException e) {
+                    // Not a backoffice token (e.g. customer portal JWT). Let other filter chains handle it.
+                    filterChain.doFilter(request, response);
+                    return;
+                }
                 if (jwtUtil.validateToken(token, userDetails)) {
                     // Check if temp token and restrict endpoints if needed
                     if (jwtUtil.isTempToken(token) && !request.getRequestURI().contains("/change-password")) {

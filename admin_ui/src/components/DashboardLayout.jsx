@@ -1,6 +1,6 @@
 import React from 'react';
 import { Layout, Menu, Button } from 'antd';
-import { LogoutOutlined, UnorderedListOutlined, UserOutlined } from '@ant-design/icons';
+import { LogoutOutlined, UnorderedListOutlined, UserOutlined, BellOutlined } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCurrentUser } from '../hooks/useCurrentUser';
@@ -23,15 +23,27 @@ const DashboardLayout = () => {
   ];
 
   if (currentUser?.role === 'ADMIN') {
-    menuItems.push({
-      key: 'users',
-      icon: <UserOutlined />,
-      label: 'Quản lý người dùng',
-      onClick: () => navigate('/admin/users'),
-    });
+    menuItems.push(
+      {
+        key: 'users',
+        icon: <UserOutlined />,
+        label: 'Quản lý người dùng',
+        onClick: () => navigate('/admin/users'),
+      },
+      {
+        key: 'notifications',
+        icon: <BellOutlined />,
+        label: 'Quản lý notification',
+        onClick: () => navigate('/admin/notifications'),
+      }
+    );
   }
 
-  const selectedKey = location.pathname.startsWith('/admin/users') ? 'users' : 'leads';
+  const selectedKey = location.pathname.startsWith('/admin/users')
+    ? 'users'
+    : location.pathname.startsWith('/admin/notifications')
+      ? 'notifications'
+      : 'leads';
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
