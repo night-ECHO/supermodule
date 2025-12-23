@@ -93,6 +93,8 @@ const TrackingDetail = () => {
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const paymentPaid = lead?.paymentStatus === 'PAID';
+  const packageLocked = paymentPaid && !!lead?.packageCode;
 
 const addonOptions = [
     { label: 'Zalo OA', value: 'ZALO_OA', level: 1 },
@@ -326,6 +328,9 @@ const addonOptions = [
       packageCode: lead?.packageCode || undefined,
       addons: Array.isArray(lead?.addons) ? lead.addons : undefined,
     });
+    if (packageLocked) {
+      message.info('Gói dịch vụ đã khóa sau khi thanh toán. Bạn chỉ có thể quản lý Add-on.');
+    }
     setPackageModalOpen(true);
   };
 
@@ -336,7 +341,11 @@ const addonOptions = [
       setPackageSaving(true);
       const values = await packageForm.validateFields();
       const addons = (values.addons || []).map((a) => (a || '').toString().toUpperCase());
-      const packageCode = values.packageCode || lead?.packageCode || null;
+      if (packageLocked && values.packageCode && values.packageCode !== lead.packageCode) {
+        message.warning('Gói đã khóa sau thanh toán, không thể thay đổi.');
+        return;
+      }
+      const packageCode = packageLocked ? lead.packageCode : values.packageCode || lead?.packageCode || null;
 
       const payload = {
         package_code: packageCode,
@@ -429,6 +438,9 @@ const addonOptions = [
   // Contract actions
   const handleConfirmOrderContract = async () => {
     if (!lead?.orderId) return message.error('Không tìm thấy đơn hàng');
+    if (!contractPreviewUrl) {
+      return message.warning('Vui lòng tải hợp đồng (PDF) trước khi xác nhận');
+    }
     try {
       const res = await confirmOrderContract(lead.orderId);
       message.success('Đã xác nhận hợp đồng');
@@ -437,6 +449,8 @@ const addonOptions = [
         setLead((prev) => ({ ...prev, contractStatus: res.contractStatus }));
       }
       loadData();
+      // Đưa người dùng lên đầu trang để xem trạng thái sau khi xác nhận
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
       const msg = e?.response?.data?.message || e?.message || 'Không thể xác nhận hợp đồng';
       message.error(msg);
@@ -494,8 +508,8 @@ const addonOptions = [
       const res = await uploadContract(lead.orderId, file);
       setContractPreviewUrl(res?.fileLink || '');
       setContractFileName(file.name || 'contract.pdf');
+      setContractConfirmed(false);
       message.success(res?.message || 'Tải hợp đồng lên thành công');
-      loadData();
       return res;
     } catch (e) {
       const msg = e?.response?.data?.message || e?.message || 'Upload hợp đồng thất bại';
@@ -527,8 +541,6 @@ const addonOptions = [
   if (!lead) {
     return <Alert type="error" message="Không tìm thấy lead" />;
   }
-
-  const paymentPaid = lead.paymentStatus === 'PAID';
 
   return (
     <div>
@@ -602,65 +614,109 @@ const addonOptions = [
                   Cập nhật gói / Add-on
                 </Button>
                 {lead.packageCode && <Tag color="geekblue">{lead.packageCode}</Tag>}
-                {progress.length === 0 && (
-                  <Button size="small" onClick={handleInitProgress}>
-                    Khởi tạo tiến trình
-                  </Button>
-                )}
+                {packageLocked && <Tag color="red">Gói đã khóa</Tag>}
               </Space>
 
-              <Space>
-                <Button size="small" onClick={handleConfirmOrderContract} disabled={!lead.orderId}>
-                  {contractConfirmed ? 'Đã xác nhận hợp đồng' : 'Xác nhận hợp đồng'}
-                </Button>
-
-                <Upload
-                  accept="application/pdf"
-                  customRequest={async ({ file, onSuccess, onError }) => {
-                    try {
-                      const res = await handleUploadContract(file);
-                      if (res) onSuccess(res, file);
-                      else onSuccess(null, file);
-                    } catch (e) {
-                      onError(e);
-                    }
-                  }}
-                  showUploadList={false}
-                  disabled={!lead.orderId}
-                >
-                  <Button size="small" icon={<UploadOutlined />}>Tải hợp đồng (PDF)</Button>
-                </Upload>
-
-                {/* Contract preview button */}
-                <Button
-                  size="small"
-                  type="link"
-                  disabled={!contractPreviewUrl}
-                  onClick={async () => {
-                    if (!contractPreviewUrl) return;
-                    try {
-                      const isAbsolute = /^(https?:)?\/\//i.test(contractPreviewUrl);
-                      if (isAbsolute && !contractPreviewUrl.startsWith(window.location.origin)) {
-                        window.open(contractPreviewUrl, '_blank');
-                        return;
+              {contractConfirmed ? (
+                <Space>
+                  <Tag color="green">Hợp đồng đã xác nhận</Tag>
+                  {/* Contract preview button */}
+                  <Button
+                    size="small"
+                    type="link"
+                    disabled={!contractPreviewUrl}
+                    onClick={async () => {
+                      if (!contractPreviewUrl) return;
+                      try {
+                        const isAbsolute = /^(https?:)?\/\//i.test(contractPreviewUrl);
+                        if (isAbsolute && !contractPreviewUrl.startsWith(window.location.origin)) {
+                          window.open(contractPreviewUrl, '_blank');
+                          return;
+                        }
+                        const response = await fetch(contractPreviewUrl, { method: 'GET' });
+                        if (!response.ok) throw new Error('Không thể tải hợp đồng');
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        window.open(url, '_blank');
+                        setTimeout(() => window.URL.revokeObjectURL(url), 60 * 1000);
+                      } catch (err) {
+                        const msg = err?.response?.data?.message || err?.message || 'Không thể preview hợp đồng';
+                        message.error(msg);
                       }
-                      const response = await fetch(contractPreviewUrl, { method: 'GET' });
-                      if (!response.ok) throw new Error('Không thể tải hợp đồng');
-                      const blob = await response.blob();
-                      const url = window.URL.createObjectURL(blob);
-                      window.open(url, '_blank');
-                      setTimeout(() => window.URL.revokeObjectURL(url), 60 * 1000);
-                    } catch (err) {
-                      const msg = err?.response?.data?.message || err?.message || 'Không thể preview hợp đồng';
-                      message.error(msg);
-                    }
-                  }}
-                >
-                  Preview hợp đồng
-                </Button>
+                    }}
+                  >
+                    Preview hợp đồng
+                  </Button>
+                  {contractFileName && (
+                    <span style={{ marginLeft: 8 }}>
+                      {contractFileName}
+                      <Tag color="green" style={{ marginLeft: 6 }}>
+                        Đã lưu
+                      </Tag>
+                    </span>
+                  )}
+                </Space>
+              ) : (
+                <Space>
+                  <Button size="small" onClick={handleConfirmOrderContract} disabled={!lead.orderId}>
+                    Xác nhận hợp đồng
+                  </Button>
 
-                {contractFileName && <span style={{ marginLeft: 8 }}>{contractFileName}</span>}
-              </Space>
+                  <Upload
+                    accept="application/pdf"
+                    customRequest={async ({ file, onSuccess, onError }) => {
+                      try {
+                        const res = await handleUploadContract(file);
+                        if (res) onSuccess(res, file);
+                        else onSuccess(null, file);
+                      } catch (e) {
+                        onError(e);
+                      }
+                    }}
+                    showUploadList={false}
+                    disabled={!lead.orderId}
+                  >
+                    <Button size="small" icon={<UploadOutlined />}>Tải hợp đồng (PDF)</Button>
+                  </Upload>
+
+                  {/* Contract preview button */}
+                  <Button
+                    size="small"
+                    type="link"
+                    disabled={!contractPreviewUrl}
+                    onClick={async () => {
+                      if (!contractPreviewUrl) return;
+                      try {
+                        const isAbsolute = /^(https?:)?\/\//i.test(contractPreviewUrl);
+                        if (isAbsolute && !contractPreviewUrl.startsWith(window.location.origin)) {
+                          window.open(contractPreviewUrl, '_blank');
+                          return;
+                        }
+                        const response = await fetch(contractPreviewUrl, { method: 'GET' });
+                        if (!response.ok) throw new Error('Không thể tải hợp đồng');
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        window.open(url, '_blank');
+                        setTimeout(() => window.URL.revokeObjectURL(url), 60 * 1000);
+                      } catch (err) {
+                        const msg = err?.response?.data?.message || err?.message || 'Không thể preview hợp đồng';
+                        message.error(msg);
+                      }
+                    }}
+                  >
+                    Preview hợp đồng
+                  </Button>
+
+                  {contractFileName && (
+                    <span style={{ marginLeft: 8 }}>
+                      {contractFileName}
+                      <Tag color="orange" style={{ marginLeft: 6 }}>
+                        Chưa lưu
+                      </Tag>
+                    </span>
+                  )}
+                </Space>
+              )}
             </Space>
           </Descriptions.Item>
 
@@ -1057,20 +1113,25 @@ const addonOptions = [
         title="Chọn gói dịch vụ / Add-on"
         open={packageModalOpen}
         onCancel={() => setPackageModalOpen(false)}
-        onOk={handleConfirmPackage}
-        okText="Lưu"
-        width={560}
-      >
-        <Form layout="vertical" form={packageForm} colon={false}>
-          <Form.Item label="Gói dịch vụ" name="packageCode">
-            <Select
-              allowClear
-              placeholder="Chưa chọn gói"
-              options={[
-                { label: 'GÓI 1', value: 'GOI_1' },
-                { label: 'GÓI 2', value: 'GOI_2' },
-              ]}
-            />
+      onOk={handleConfirmPackage}
+      okText="Lưu"
+      width={560}
+    >
+      <Form layout="vertical" form={packageForm} colon={false}>
+        <Form.Item
+          label={packageLocked ? 'Gói dịch vụ (đã khóa sau thanh toán)' : 'Gói dịch vụ'}
+          name="packageCode"
+          tooltip={packageLocked ? 'Bạn không thể đổi gói sau khi đã thanh toán' : undefined}
+        >
+          <Select
+            allowClear
+            placeholder="Chưa chọn gói"
+            disabled={packageLocked}
+            options={[
+              { label: 'GÓI 1', value: 'GOI_1' },
+              { label: 'GÓI 2', value: 'GOI_2' },
+            ]}
+          />
           </Form.Item>
           <Form.Item label="Add-ons" name="addons">
             <Checkbox.Group style={{ width: '100%' }}>

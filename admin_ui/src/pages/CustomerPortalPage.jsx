@@ -93,6 +93,12 @@ const CustomerPortalPage = () => {
     return arr.length;
   };
 
+  const milestoneLabel = (code) => {
+    if (!code) return 'Tài liệu khác';
+    const step = timeline.find((s) => s.code === code);
+    return step?.name || code;
+  };
+
   const handleLogin = async () => {
     const values = await form.validateFields();
     setLoading(true);
@@ -282,17 +288,26 @@ const CustomerPortalPage = () => {
 
         <Card title="Tài liệu đã công khai" bordered={false}>
           {documents.length === 0 && <div>Chưa có tài liệu công khai.</div>}
-          {documents.map((doc) => (
-            <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-              <div>
-                <div style={{ fontWeight: 600 }}>{doc.name}</div>
-                <div style={{ color: '#666' }}>{doc.type || 'DOCUMENT'}</div>
+          {Array.from(docsByMilestone.entries())
+            .filter(([, docs]) => docs.length > 0)
+            .map(([code, docs]) => (
+              <div key={code || 'other'} style={{ marginBottom: 12 }}>
+                <Divider orientation="left" plain style={{ margin: '12px 0' }}>
+                  {milestoneLabel(code)} {docs.length > 0 ? `(${docs.length})` : ''}
+                </Divider>
+                {docs.map((doc) => (
+                  <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{doc.name}</div>
+                      <div style={{ color: '#666' }}>{doc.type || 'DOCUMENT'}</div>
+                    </div>
+                    <Button icon={<DownloadOutlined />} onClick={() => handleDownload(doc)} size="small">
+                      Tải về
+                    </Button>
+                  </div>
+                ))}
               </div>
-              <Button icon={<DownloadOutlined />} onClick={() => handleDownload(doc)}>
-                Tải về
-              </Button>
-            </div>
-          ))}
+            ))}
         </Card>
       </Space>
 

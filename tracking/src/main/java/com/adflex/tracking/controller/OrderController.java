@@ -65,8 +65,8 @@ public class OrderController {
         if (!file.getContentType().equals("application/pdf")) {
             throw new RuntimeException("Chỉ chấp nhận file PDF");
         }
-        String fileLink = orderService.uploadContractScan(orderId, file, principal.getName());
-        return ResponseEntity.ok(Map.of("fileLink", fileLink, "message", "Upload hợp đồng thành công"));
+        Map<String, Object> resp = orderService.uploadContractScan(orderId, file, principal.getName());
+        return ResponseEntity.ok(resp);
     }
     // Sẽ thêm confirm contract và upload ở phần sau
 }

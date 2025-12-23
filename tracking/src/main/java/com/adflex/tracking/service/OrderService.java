@@ -8,6 +8,7 @@ import com.adflex.tracking.enums.PaymentStatus;
 import com.adflex.tracking.repository.LeadProgressRepository;
 import com.adflex.tracking.repository.OrderRepository;
 
+
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +48,7 @@ public class OrderService {
     private final LeadProgressRepository progressRepo;
     private final LeadRepository leadRepository; // Để update lead status nếu cần
     private final TelegramNotifierService telegramNotifier; // Hoặc ZaloNotifier nếu có
+    private final com.adflex.tracking.repository.DocumentRepository documentRepository;
 
     // upload file shit
     @Value("${app.upload.contract-dir:uploads/contracts}")
@@ -153,7 +155,7 @@ public class OrderService {
         return order;
     }
 
-    public String uploadContractScan(String orderId, MultipartFile file, String uploadedBy) {
+    public Map<String, Object> uploadContractScan(String orderId, MultipartFile file, String uploadedBy) {
         if (file.isEmpty() || !StringUtils.cleanPath(file.getOriginalFilename()).endsWith(".pdf")) {
             throw new RuntimeException("File rỗng hoặc không phải PDF");
         }
@@ -177,10 +179,33 @@ public class OrderService {
 
             log.info("Contract scan uploaded: {} for order {} by {}", fileLink, orderId, uploadedBy);
 
-            // TODO: Nếu có bảng documents, save record với orderId, type=CONTRACT,
-            // link=fileLink, uploadedBy
+            java.util.UUID docId = null;
+            try {
+                java.util.UUID leadUuid = java.util.UUID.fromString(order.getLeadId());
+                com.adflex.tracking.entity.Document doc = com.adflex.tracking.entity.Document.builder()
+                        .id(java.util.UUID.randomUUID())
+                        .leadId(leadUuid)
+                        .name(originalFilename)
+                        .type("CONTRACT")
+                        .milestoneCode(null)
+                        .storageKey(filePath.toAbsolutePath().toString())
+                        .isPublic(Boolean.TRUE)
+                        .build();
 
-            return fileLink;
+                com.adflex.tracking.entity.Document saved = documentRepository.save(doc);
+                docId = saved.getId();
+                log.info("Saved contract document {} for lead {} (order {})", saved.getId(), order.getLeadId(), orderId);
+            } catch (Exception e) {
+                // Don't fail the upload if DB save fails, but log for debugging
+                log.error("Failed to save contract document record for order {}", orderId, e);
+            }
+
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("fileLink", fileLink);
+            resp.put("message", "Upload hợp đồng thành công");
+            if (docId != null) resp.put("documentId", docId.toString());
+
+            return resp;
         } catch (IOException e) {
             throw new RuntimeException("Failed to upload contract scan", e);
         }
@@ -201,13 +226,6 @@ public class OrderService {
                 log.info("🔓 Unlocked STEP_DKDN after both payment & contract confirmed for lead {}", leadId);
             }
 
-            // 2. Update lead status thành PROCESSING (nếu entity Lead có field status)
-            // Lead lead = leadRepository.findById(UUID.fromString(leadId)).orElse(null);
-            // if (lead != null && lead.getStatus() != LeadStatus.PROCESSING) { // Giả sử có
-            // field status
-            // lead.setStatus(LeadStatus.PROCESSING);
-            // leadRepository.save(lead);
-            // }
 
             // 3. Notify group – SỬA THÀNH PHIÊN BẢN NÀY (an toàn null)
             String fullName = "N/A";
@@ -216,8 +234,6 @@ public class OrderService {
             String addonsStr = order.getAddons() != null && !order.getAddons().isEmpty()
                     ? String.join(", ", order.getAddons())
                     : "Không";
-
-            telegramNotifier.sendMessage("🎉 LEAD HOÀN THÀNH THANH TOÁN");
 
             // TODO: Nếu cần publish event LeadReadyEvent hoặc custom BothConfirmedEvent
 

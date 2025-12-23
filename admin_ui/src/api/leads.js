@@ -140,7 +140,8 @@ export const confirmOrderPayment = async (orderId) => {
 };
 
 export const fetchOrderPaymentInfo = async (orderId) => {
-  const res = await api.get(`/api/admin/orders/${orderId}/public-payment`);
+  // Use the public endpoint so payment info can be fetched without admin auth
+  const res = await api.get(`/api/orders/${orderId}/public-payment`);
   return res.data;
 };
 

@@ -20,7 +20,7 @@ public class PublicPaymentController {
         Order order = orderService.getPublicOrderByToken(token);
         return ResponseEntity.ok(orderService.generatePublicPaymentInfo(order));
     }
-        @GetMapping("/api/orders/{orderId}/public-payment")
+    @GetMapping("/api/orders/{orderId}/public-payment")
     public ResponseEntity<Map<String, Object>> getOrderPublicPaymentInfo(@PathVariable String orderId) {
         return ResponseEntity.ok(orderService.getPublicPaymentInfoByOrderId(orderId));
     }
